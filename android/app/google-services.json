@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "311948803861",
+    "project_id": "chordly-ce1c9",
+    "storage_bucket": "chordly-ce1c9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:311948803861:android:d59be3385a94629038f31c",
+        "android_client_info": {
+          "package_name": "com.example.chordly"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "311948803861-hhhf09tfeshur9gjq27rphhnllhcne7s.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.chordly",
+            "certificate_hash": "e0ffbde9b6a41e31049d09c28aa61890f6006598"
+          }
+        },
+        {
+          "client_id": "311948803861-9vecnmari1kd0nr8ve06jouip2vmahgs.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC5nM7Zc6lRfH7kiKnuXXglqFVqoSOxWTM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "311948803861-9vecnmari1kd0nr8ve06jouip2vmahgs.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
