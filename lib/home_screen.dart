@@ -1,4 +1,3 @@
-// Archivo: lib/home_screen.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'auth_service.dart';
@@ -16,12 +15,12 @@ class HomeScreen extends StatelessWidget {
         title: Text("Pantalla Principal"),
         actions: [
           if (user != null)
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: GestureDetector(
-                onTap: () {
-                  // Mostrar opciones adicionales si es necesario
-                },
+            GestureDetector(
+              onTap: () {
+                Navigator.pushNamed(context, '/profile');
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
                 child: CircleAvatar(
                   radius: 20,
                   backgroundImage: NetworkImage(user.photoURL ?? ''),
