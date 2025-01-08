@@ -1,3 +1,4 @@
+// Archivo: lib/home_screen.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'auth_service.dart';
@@ -40,9 +41,11 @@ class HomeScreen extends StatelessWidget {
         ],
       ),
       body: Center(
-        child: Text(
-          "¡Bienvenido a la aplicación!",
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+        child: ElevatedButton(
+          onPressed: () {
+            Navigator.pushNamed(context, '/personal_songs');
+          },
+          child: Text("Ir a Mis Canciones"),
         ),
       ),
     );

@@ -1,9 +1,10 @@
+// Archivo: lib/main.dart
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'login_screen.dart';
 import 'home_screen.dart';
+import 'personal_songs_screen.dart';
 import 'profile_screen.dart';
-
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,6 +25,7 @@ class MyApp extends StatelessWidget {
         '/': (context) => LoginScreen(),
         '/home': (context) => HomeScreen(),
         '/profile': (context) => ProfileScreen(),
+        '/personal_songs': (context) => PersonalSongsScreen(),
       },
     );
   }
