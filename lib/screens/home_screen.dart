@@ -1,8 +1,9 @@
-// Archivo: lib/home_screen.dart
+// Archivo: lib/screens/home_screen.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'auth_service.dart';
+import '../services/auth_service.dart';
 import 'login_screen.dart';
+import '../utils/constants.dart'; // Importando las constantes
 
 class HomeScreen extends StatelessWidget {
   final AuthService _authService = AuthService();
@@ -13,7 +14,7 @@ class HomeScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text("Pantalla Principal"),
+        title: Text("Pantalla Principal", style: kTitleTextStyle),
         actions: [
           if (user != null)
             GestureDetector(
@@ -29,7 +30,7 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
           IconButton(
-            icon: Icon(Icons.logout),
+            icon: Icon(Icons.logout, size: kIconSize, color: kIconColor),
             onPressed: () async {
               await _authService.signOut();
               Navigator.pushReplacement(

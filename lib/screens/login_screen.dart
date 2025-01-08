@@ -1,6 +1,9 @@
+// Archivo: lib/screens/login_screen.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'auth_service.dart';
+import '../services/auth_service.dart';
+import '../widgets/custom_button.dart'; // Botón reutilizable
+import '../utils/constants.dart'; // Importando las constantes
 
 class LoginScreen extends StatelessWidget {
   final AuthService _authService = AuthService();
@@ -11,7 +14,10 @@ class LoginScreen extends StatelessWidget {
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [Colors.deepPurpleAccent, Colors.blueAccent],
+            colors: [
+              kPrimaryColor,
+              kSecondaryColor
+            ], // Usando las constantes de color
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -23,19 +29,15 @@ class LoginScreen extends StatelessWidget {
               Icon(
                 Icons.music_note,
                 size: 100,
-                color: Colors.white,
+                color: kWhiteTextColor, // Usando el color blanco definido
               ),
               SizedBox(height: 20),
               Text(
                 "Bienvenido a Chordly",
-                style: TextStyle(
-                  fontSize: 24,
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: kTextStyle, // Usando el estilo de texto constante
               ),
               SizedBox(height: 40),
-              ElevatedButton(
+              CustomButton(
                 onPressed: () async {
                   User? user = await _authService.signInWithGoogle();
                   if (user != null) {
@@ -46,30 +48,7 @@ class LoginScreen extends StatelessWidget {
                     );
                   }
                 },
-                style: ElevatedButton.styleFrom(
-                  padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                  backgroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.login,
-                      color: Colors.deepPurpleAccent,
-                    ),
-                    SizedBox(width: 10),
-                    Text(
-                      "Iniciar sesión con Google",
-                      style: TextStyle(
-                        color: Colors.deepPurpleAccent,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ],
-                ),
+                text: 'Iniciar sesión con Google',
               ),
             ],
           ),

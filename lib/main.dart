@@ -1,10 +1,11 @@
 // Archivo: lib/main.dart
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'login_screen.dart';
-import 'home_screen.dart';
-import 'personal_songs_screen.dart';
-import 'profile_screen.dart';
+import 'screens/login_screen.dart';
+import 'screens/home_screen.dart';
+import 'screens/personal_songs_screen.dart';
+import 'screens/profile_screen.dart';
+import 'utils/constants.dart'; // Importando las constantes si las necesitas
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

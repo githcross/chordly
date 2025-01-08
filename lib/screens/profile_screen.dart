@@ -1,5 +1,7 @@
+// Archivo: lib/screens/profile_screen.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../utils/constants.dart'; // Importando las constantes
 
 class ProfileScreen extends StatelessWidget {
   @override
@@ -8,7 +10,7 @@ class ProfileScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text("Perfil del Usuario"),
+        title: Text("Perfil del Usuario", style: kTitleTextStyle),
       ),
       body: Center(
         child: user != null
@@ -22,12 +24,12 @@ class ProfileScreen extends StatelessWidget {
                   SizedBox(height: 10),
                   Text(
                     user.displayName ?? 'Usuario',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    style: kTitleTextStyle,
                   ),
                   SizedBox(height: 5),
                   Text(
                     user.email ?? '',
-                    style: TextStyle(fontSize: 16, color: Colors.grey),
+                    style: kSubTitleTextStyle,
                   ),
                 ],
               )
