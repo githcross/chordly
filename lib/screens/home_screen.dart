@@ -1,9 +1,8 @@
-// Archivo: lib/screens/home_screen.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
-import '../utils/constants.dart'; // Importando las constantes
+import '../utils/constants.dart'; // Importing constants
 
 class HomeScreen extends StatelessWidget {
   final AuthService _authService = AuthService();
@@ -42,11 +41,26 @@ class HomeScreen extends StatelessWidget {
         ],
       ),
       body: Center(
-        child: ElevatedButton(
-          onPressed: () {
-            Navigator.pushNamed(context, '/personal_songs');
-          },
-          child: Text("Ir a Mis Canciones"),
+        child: Card(
+          elevation: 5,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: InkWell(
+            onTap: () {
+              Navigator.pushNamed(context, '/personal_songs');
+            },
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              child: Center(
+                child: Text(
+                  "Ir a Mis Canciones",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
