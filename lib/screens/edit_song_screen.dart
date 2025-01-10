@@ -8,8 +8,7 @@ class EditSongScreen extends StatefulWidget {
   EditSongScreen({required this.songId});
 
   @override
-  _EditSongScreenState createState() =>
-      _EditSongScreenState(); // Clase de estado aquí
+  _EditSongScreenState createState() => _EditSongScreenState();
 }
 
 class _EditSongScreenState extends State<EditSongScreen> {
@@ -102,11 +101,6 @@ class _EditSongScreenState extends State<EditSongScreen> {
                   decoration: InputDecoration(labelText: 'Autor'),
                 ),
                 TextFormField(
-                  controller: _lyricController,
-                  decoration: InputDecoration(labelText: 'Letra'),
-                  maxLines: 5,
-                ),
-                TextFormField(
                   controller: _tagsController,
                   decoration: InputDecoration(labelText: 'Etiquetas'),
                   onChanged: (value) {
@@ -129,6 +123,23 @@ class _EditSongScreenState extends State<EditSongScreen> {
                     );
                   }).toList(),
                   decoration: InputDecoration(labelText: 'Idioma'),
+                ),
+                SizedBox(height: 16),
+                // Aquí está el campo de letra que ocupará el espacio restante
+                Container(
+                  height: MediaQuery.of(context).size.height *
+                      0.4, // Asignamos un espacio controlado
+                  child: TextFormField(
+                    controller: _lyricController,
+                    decoration: InputDecoration(labelText: 'Letra'),
+                    maxLines: null, // Permite texto en múltiples líneas
+                    keyboardType:
+                        TextInputType.multiline, // Permite múltiples líneas
+                    textInputAction: TextInputAction.newline, // Nuevas líneas
+                    style: TextStyle(
+                        fontSize:
+                            16), // Estilo de texto más grande para la edición
+                  ),
                 ),
               ],
             ),
