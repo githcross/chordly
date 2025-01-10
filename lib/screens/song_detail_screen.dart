@@ -156,6 +156,11 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
                       style: TextStyle(
                           fontSize: 16, color: Colors.black.withOpacity(0.7))),
                   SizedBox(height: 8),
+                  Text(
+                      "Clave Base: ${song['baseKey']}", // Mostrar la clave base
+                      style: TextStyle(
+                          fontSize: 16, color: Colors.black.withOpacity(0.7))),
+                  SizedBox(height: 8),
                   Text("Letra: ",
                       style:
                           TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),

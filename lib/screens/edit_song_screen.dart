@@ -1,3 +1,4 @@
+// Archivo: lib/screens/edit_song_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../utils/constants.dart';
@@ -16,7 +17,9 @@ class _EditSongScreenState extends State<EditSongScreen> {
   late TextEditingController _titleController;
   late TextEditingController _authorController;
   late TextEditingController _lyricController;
-  late TextEditingController _tagsController; // Controlador para las etiquetas
+  late TextEditingController _tagsController;
+  late TextEditingController
+      _baseKeyController; // Controlador para la clave base
   List<String> _tags = [];
   String _language = 'English';
 
@@ -26,12 +29,12 @@ class _EditSongScreenState extends State<EditSongScreen> {
     _titleController = TextEditingController();
     _authorController = TextEditingController();
     _lyricController = TextEditingController();
-    _tagsController =
-        TextEditingController(); // Inicializando el controlador de etiquetas
+    _tagsController = TextEditingController();
+    _baseKeyController = TextEditingController(); // Inicializar el controlador
     _fetchSongData();
   }
 
-  // Fetch song data to populate the form fields
+  // Recuperar los datos de la canción desde Firebase
   void _fetchSongData() async {
     DocumentSnapshot songDoc = await FirebaseFirestore.instance
         .collection('songs')
@@ -43,14 +46,15 @@ class _EditSongScreenState extends State<EditSongScreen> {
       _authorController.text = song['author'];
       _lyricController.text = song['lyric'];
       _tags = List<String>.from(song['tags']);
-      _tagsController.text =
-          _tags.join(', '); // Asignar el valor inicial de las etiquetas
+      _tagsController.text = _tags.join(', ');
       _language = song['language'];
+      _baseKeyController.text =
+          song['baseKey'] ?? ''; // Recuperar la clave base
       setState(() {});
     }
   }
 
-  // Guardar los cambios en la base de datos
+  // Guardar los cambios en Firebase
   void _saveChanges() {
     if (_formKey.currentState!.validate()) {
       FirebaseFirestore.instance.collection('songs').doc(widget.songId).update({
@@ -59,6 +63,7 @@ class _EditSongScreenState extends State<EditSongScreen> {
         'lyric': _lyricController.text,
         'tags': _tags,
         'language': _language,
+        'baseKey': _baseKeyController.text, // Guardar la clave base
       });
       Navigator.pop(context);
     }
@@ -72,13 +77,11 @@ class _EditSongScreenState extends State<EditSongScreen> {
         actions: [
           IconButton(
             icon: Icon(Icons.save, color: kIconColor),
-            onPressed:
-                _saveChanges, // Llamamos a la función para guardar los cambios
+            onPressed: _saveChanges,
           ),
         ],
       ),
       body: SingleChildScrollView(
-        // Hacer que el cuerpo sea desplazable
         child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Form(
@@ -107,6 +110,16 @@ class _EditSongScreenState extends State<EditSongScreen> {
                     _tags = value.split(',').map((e) => e.trim()).toList();
                   },
                 ),
+                TextFormField(
+                  controller: _baseKeyController,
+                  decoration: InputDecoration(labelText: 'Clave Base'),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Por favor ingresa una clave base';
+                    }
+                    return null;
+                  },
+                ),
                 SizedBox(height: 16),
                 DropdownButtonFormField<String>(
                   value: _language,
@@ -125,20 +138,15 @@ class _EditSongScreenState extends State<EditSongScreen> {
                   decoration: InputDecoration(labelText: 'Idioma'),
                 ),
                 SizedBox(height: 16),
-                // Aquí está el campo de letra que ocupará el espacio restante
                 Container(
-                  height: MediaQuery.of(context).size.height *
-                      0.4, // Asignamos un espacio controlado
+                  height: MediaQuery.of(context).size.height * 0.4,
                   child: TextFormField(
                     controller: _lyricController,
                     decoration: InputDecoration(labelText: 'Letra'),
-                    maxLines: null, // Permite texto en múltiples líneas
-                    keyboardType:
-                        TextInputType.multiline, // Permite múltiples líneas
-                    textInputAction: TextInputAction.newline, // Nuevas líneas
-                    style: TextStyle(
-                        fontSize:
-                            16), // Estilo de texto más grande para la edición
+                    maxLines: null,
+                    keyboardType: TextInputType.multiline,
+                    textInputAction: TextInputAction.newline,
+                    style: TextStyle(fontSize: 16),
                   ),
                 ),
               ],
