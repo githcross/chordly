@@ -1,7 +1,10 @@
-// Archivo: lib/screens/song_detail_screen.dart
+// lib/screens/song_detail_screen.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:pdf/pdf.dart';
+import 'package:printing/printing.dart';
 import '../utils/constants.dart'; // Importando las constantes
 import 'edit_song_screen.dart'; // Si tienes una pantalla de edición para la canción
 
@@ -16,9 +19,7 @@ class SongDetailScreen extends StatefulWidget {
 
 class _SongDetailScreenState extends State<SongDetailScreen> {
   late String lyrics; // Almacenará la letra de la canción
-
-  // Variable para controlar el estado de la canción
-  late DocumentSnapshot song;
+  late DocumentSnapshot song; // Almacenará los datos de la canción
 
   // Esta función se llama cuando volvemos de la pantalla de edición
   void refreshSongData() {
@@ -75,6 +76,13 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
               saveChangesToFirebase(lyrics); // Guardar cambios en Firebase
             },
             iconSize: 30,
+          ),
+          // Icono para compartir como PDF
+          IconButton(
+            icon: Icon(Icons.share, color: Colors.black.withOpacity(0.7)),
+            onPressed: () {
+              _generateAndSharePDF();
+            },
           ),
         ],
       ),
@@ -249,5 +257,43 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
 
     // Reañadimos el 'b' (bemol) si la nota lo tenía
     return note.endsWith('b') ? '${notes[newIndex]}b' : notes[newIndex];
+  }
+
+  // Función para generar y compartir el PDF
+  void _generateAndSharePDF() async {
+    final pdf = pw.Document();
+
+    pdf.addPage(
+      pw.Page(
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text('Título: ${song['title']}',
+                  style: pw.TextStyle(
+                      fontSize: 18, fontWeight: pw.FontWeight.bold)),
+              pw.Text('Autor: ${song['author']}',
+                  style: pw.TextStyle(color: PdfColors.grey)),
+              pw.Text('Idioma: ${song['language']}',
+                  style: pw.TextStyle(color: PdfColors.grey)),
+              pw.Text('Clave Base: ${song['baseKey']}',
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+              pw.Text('Letra:'),
+              pw.SizedBox(height: 10),
+              pw.Text('$lyrics'),
+              pw.SizedBox(height: 10),
+              pw.Text('Etiquetas: ${song['tags'].join(', ')}',
+                  style: pw.TextStyle(color: PdfColors.grey)),
+              pw.Text('Fecha de Creación: ${song['timestamp'].toDate()}',
+                  style: pw.TextStyle(color: PdfColors.grey)),
+            ],
+          );
+        },
+      ),
+    );
+
+    final output = await pdf.save();
+    await Printing.sharePdf(
+        bytes: output, filename: 'cancion_${song['title']}.pdf');
   }
 }

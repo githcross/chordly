@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:share_plus/share_plus.dart'; // Importando share_plus en lugar de share
+
 import '../utils/constants.dart'; // Importando las constantes
 import 'song_detail_screen.dart'; // Importando la pantalla de detalles
 import 'add_song_screen.dart'; // Importando la pantalla de agregar canción
@@ -13,6 +15,7 @@ class PersonalSongsScreen extends StatefulWidget {
 class _PersonalSongsScreenState extends State<PersonalSongsScreen> {
   String _searchQuery = ""; // Variable para almacenar la búsqueda
   String _sortOrder = 'asc'; // Orden por defecto: ascendente (A-Z)
+  List<DocumentSnapshot> filteredSongs = []; // Aquí se define la lista
 
   @override
   Widget build(BuildContext context) {
@@ -26,6 +29,7 @@ class _PersonalSongsScreenState extends State<PersonalSongsScreen> {
             icon: Icon(Icons.share, size: kIconSize, color: kIconColor),
             onPressed: () {
               // Funcionalidad de compartir
+              _shareSongs(user);
             },
           ),
           // Menú desplegable para elegir el orden
@@ -90,7 +94,7 @@ class _PersonalSongsScreenState extends State<PersonalSongsScreen> {
             });
           }
 
-          final filteredSongs = songs.where((song) {
+          filteredSongs = songs.where((song) {
             final title = song['title']?.toLowerCase() ?? '';
             final author = song['author']?.toLowerCase() ?? '';
             final searchQueryLower = _searchQuery.toLowerCase();
@@ -138,6 +142,25 @@ class _PersonalSongsScreenState extends State<PersonalSongsScreen> {
         child: Icon(Icons.add),
       ),
     );
+  }
+
+  // Método para compartir canciones
+  void _shareSongs(User? user) {
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Por favor, inicia sesión para compartir.')),
+      );
+      return;
+    }
+
+    final songTitles = List.generate(
+      filteredSongs.length,
+      (index) => filteredSongs[index]['title'] ?? 'Sin título',
+    ).join('\n'); // Combina todos los títulos de las canciones
+
+    final shareText = "Mis canciones:\n\n$songTitles"; // Mensaje a compartir
+
+    Share.share(shareText); // Acción de compartir con share_plus
   }
 }
 
