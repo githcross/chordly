@@ -59,8 +59,8 @@ class HomeScreen extends StatelessWidget {
                   child: Container(
                     decoration: BoxDecoration(
                       image: DecorationImage(
-                        image: AssetImage(
-                            'lib/assets/images/songs_background.jpg'), // Imagen de fondo para "Mis Canciones"
+                        image: NetworkImage(
+                            'https://res.cloudinary.com/djocon1g7/image/upload/v1736620306/gznwel11krkkxret6jav.avif'), // Imagen de fondo para "Mis Canciones" desde Cloudinary
                         fit: BoxFit.cover,
                       ),
                       borderRadius: BorderRadius.circular(10),
@@ -102,8 +102,8 @@ class HomeScreen extends StatelessWidget {
                   child: Container(
                     decoration: BoxDecoration(
                       image: DecorationImage(
-                        image: AssetImage(
-                            'lib/assets/images/playlists_background.jpg'), // Imagen de fondo para "Mis Listas"
+                        image: NetworkImage(
+                            'https://res.cloudinary.com/djocon1g7/image/upload/v1736620306/t8rojius63l1akhnlx01.avif'), // Imagen de fondo para "Mis Listas" desde Cloudinary
                         fit: BoxFit.cover,
                       ),
                       borderRadius: BorderRadius.circular(10),
