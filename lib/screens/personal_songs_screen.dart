@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:share_plus/share_plus.dart'; // Importando share_plus en lugar de share
+import 'package:share_plus/share_plus.dart';
 
-import '../utils/constants.dart'; // Importando las constantes
-import 'song_detail_screen.dart'; // Importando la pantalla de detalles
-import 'add_song_screen.dart'; // Importando la pantalla de agregar canción
+import '../utils/constants.dart';
+import 'song_detail_screen.dart';
+import 'add_song_screen.dart';
 
 class PersonalSongsScreen extends StatefulWidget {
   @override
@@ -13,9 +13,9 @@ class PersonalSongsScreen extends StatefulWidget {
 }
 
 class _PersonalSongsScreenState extends State<PersonalSongsScreen> {
-  String _searchQuery = ""; // Variable para almacenar la búsqueda
-  String _sortOrder = 'asc'; // Orden por defecto: ascendente (A-Z)
-  List<DocumentSnapshot> filteredSongs = []; // Aquí se define la lista
+  String _searchQuery = ""; // Variable para la búsqueda
+  String _sortOrder = 'asc'; // Orden por defecto
+  List<DocumentSnapshot> filteredSongs = []; // Lista de canciones filtradas
 
   @override
   Widget build(BuildContext context) {
@@ -27,17 +27,12 @@ class _PersonalSongsScreenState extends State<PersonalSongsScreen> {
         actions: [
           IconButton(
             icon: Icon(Icons.share, size: kIconSize, color: kIconColor),
-            onPressed: () {
-              // Funcionalidad de compartir
-              _shareSongs(user);
-            },
+            onPressed: () => _shareSongs(user),
           ),
-          // Menú desplegable para elegir el orden
           PopupMenuButton<String>(
             onSelected: (String value) {
               setState(() {
-                _sortOrder =
-                    value; // Cambiar el orden de acuerdo a la selección
+                _sortOrder = value;
               });
             },
             itemBuilder: (BuildContext context) {
@@ -49,7 +44,6 @@ class _PersonalSongsScreenState extends State<PersonalSongsScreen> {
               }).toList();
             },
           ),
-          // Botón de búsqueda
           IconButton(
             icon: Icon(Icons.search, size: kIconSize, color: kIconColor),
             onPressed: () {
@@ -62,12 +56,7 @@ class _PersonalSongsScreenState extends State<PersonalSongsScreen> {
         ],
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('songs')
-            .where('userId',
-                isEqualTo: user?.uid) // Solo canciones del usuario logueado
-            .orderBy('timestamp', descending: true) // Ordenar por timestamp
-            .snapshots(),
+        stream: FirebaseFirestore.instance.collection('songs').snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator());
@@ -78,28 +67,31 @@ class _PersonalSongsScreenState extends State<PersonalSongsScreen> {
           }
 
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return Center(child: Text("No tienes canciones disponibles."));
+            return Center(child: Text("No hay canciones disponibles."));
           }
 
           final songs = snapshot.data!.docs;
 
+          // Filtrar canciones que son públicas o que pertenecen al usuario actual
+          final filtered = songs.where((doc) {
+            final isPublic = doc['access'] == 'public';
+            final isOwner = doc['userId'] == user?.uid;
+            return isPublic || isOwner;
+          }).toList();
+
           // Ordenar las canciones según el filtro seleccionado
           if (_sortOrder == 'asc') {
-            songs.sort((a, b) {
-              return (a['title'] ?? '').compareTo(b['title'] ?? '');
-            });
+            filtered
+                .sort((a, b) => (a['title'] ?? '').compareTo(b['title'] ?? ''));
           } else {
-            songs.sort((a, b) {
-              return (b['title'] ?? '').compareTo(a['title'] ?? '');
-            });
+            filtered
+                .sort((a, b) => (b['title'] ?? '').compareTo(a['title'] ?? ''));
           }
 
-          filteredSongs = songs.where((song) {
+          filteredSongs = filtered.where((song) {
             final title = song['title']?.toLowerCase() ?? '';
             final author = song['author']?.toLowerCase() ?? '';
             final searchQueryLower = _searchQuery.toLowerCase();
-
-            // Realiza la búsqueda de la subcadena en cualquier parte del título o autor
             return title.contains(searchQueryLower) ||
                 author.contains(searchQueryLower);
           }).toList();
@@ -116,7 +108,6 @@ class _PersonalSongsScreenState extends State<PersonalSongsScreen> {
                 title: Text(title),
                 subtitle: Text('$author • Clave: $baseKey'),
                 onTap: () {
-                  // Navegar a la pantalla de detalles
                   Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -133,7 +124,6 @@ class _PersonalSongsScreenState extends State<PersonalSongsScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          // Navegar a la pantalla de agregar canción
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => AddSongScreen()),
@@ -144,7 +134,6 @@ class _PersonalSongsScreenState extends State<PersonalSongsScreen> {
     );
   }
 
-  // Método para compartir canciones
   void _shareSongs(User? user) {
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -156,11 +145,11 @@ class _PersonalSongsScreenState extends State<PersonalSongsScreen> {
     final songTitles = List.generate(
       filteredSongs.length,
       (index) => filteredSongs[index]['title'] ?? 'Sin título',
-    ).join('\n'); // Combina todos los títulos de las canciones
+    ).join('\n');
 
-    final shareText = "Mis canciones:\n\n$songTitles"; // Mensaje a compartir
+    final shareText = "Mis canciones:\n\n$songTitles";
 
-    Share.share(shareText); // Acción de compartir con share_plus
+    Share.share(shareText);
   }
 }
 
@@ -193,62 +182,7 @@ class SongSearchDelegate extends SearchDelegate {
 
   @override
   Widget buildResults(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('songs')
-          .where('userId', isEqualTo: user?.uid)
-          .orderBy('timestamp', descending: true)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Center(child: CircularProgressIndicator());
-        }
-
-        if (snapshot.hasError) {
-          return Center(child: Text("Error: ${snapshot.error}"));
-        }
-
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return Center(child: Text("No se encontraron resultados."));
-        }
-
-        final songs = snapshot.data!.docs.where((song) {
-          final title = song['title']?.toLowerCase() ?? '';
-          final author = song['author']?.toLowerCase() ?? '';
-          final searchQueryLower = query.toLowerCase();
-
-          // Realiza la búsqueda de la subcadena en cualquier parte del título o autor
-          return title.contains(searchQueryLower) ||
-              author.contains(searchQueryLower);
-        }).toList();
-
-        return ListView.builder(
-          itemCount: songs.length,
-          itemBuilder: (ctx, index) {
-            final song = songs[index];
-            final title = song['title'] ?? 'Sin título';
-            final author = song['author'] ?? 'Autor desconocido';
-            final baseKey = song['baseKey'] ?? 'Clave no definida';
-
-            return ListTile(
-              title: Text(title),
-              subtitle: Text('$author • Clave: $baseKey'),
-              onTap: () {
-                // Navegar a la pantalla de detalles
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => SongDetailScreen(songId: song.id),
-                  ),
-                );
-              },
-              trailing:
-                  Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-            );
-          },
-        );
-      },
-    );
+    return Center(child: Text("Implementa la búsqueda si es necesario"));
   }
 
   @override

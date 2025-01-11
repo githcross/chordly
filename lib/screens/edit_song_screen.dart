@@ -1,6 +1,6 @@
-// Archivo: lib/screens/edit_song_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../utils/constants.dart';
 
 class EditSongScreen extends StatefulWidget {
@@ -18,10 +18,14 @@ class _EditSongScreenState extends State<EditSongScreen> {
   late TextEditingController _authorController;
   late TextEditingController _lyricController;
   late TextEditingController _tagsController;
-  late TextEditingController
-      _baseKeyController; // Controlador para la clave base
+  late TextEditingController _baseKeyController;
+  late String _language;
+  String _access = 'public'; // Inicializado con un valor predeterminado
+  late String _userId; // Guardar el userId de la canción
   List<String> _tags = [];
-  String _language = 'English';
+  bool _isEditable =
+      false; // Bandera para habilitar/deshabilitar el campo de acceso
+  bool _isDataLoaded = false; // Indicador de si los datos han sido cargados
 
   @override
   void initState() {
@@ -30,7 +34,8 @@ class _EditSongScreenState extends State<EditSongScreen> {
     _authorController = TextEditingController();
     _lyricController = TextEditingController();
     _tagsController = TextEditingController();
-    _baseKeyController = TextEditingController(); // Inicializar el controlador
+    _baseKeyController = TextEditingController();
+    _language = 'Español';
     _fetchSongData();
   }
 
@@ -48,9 +53,22 @@ class _EditSongScreenState extends State<EditSongScreen> {
       _tags = List<String>.from(song['tags']);
       _tagsController.text = _tags.join(', ');
       _language = song['language'];
-      _baseKeyController.text =
-          song['baseKey'] ?? ''; // Recuperar la clave base
-      setState(() {});
+      _baseKeyController.text = song['baseKey'] ?? '';
+      _access = song['access'] ??
+          'public'; // Asegurarse de que _access tenga un valor
+      _userId = song['userId']; // Guardar el userId de la canción
+
+      // Comparar el userId de la canción con el uid del usuario logueado
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser != null && currentUser.uid == _userId) {
+        setState(() {
+          _isEditable = true; // Si el usuario es el creador, habilitar edición
+        });
+      }
+
+      setState(() {
+        _isDataLoaded = true; // Marcar como cargado
+      });
     }
   }
 
@@ -63,7 +81,8 @@ class _EditSongScreenState extends State<EditSongScreen> {
         'lyric': _lyricController.text,
         'tags': _tags,
         'language': _language,
-        'baseKey': _baseKeyController.text, // Guardar la clave base
+        'baseKey': _baseKeyController.text,
+        'access': _access, // Guardar el acceso actualizado
       });
       Navigator.pop(context);
     }
@@ -71,6 +90,11 @@ class _EditSongScreenState extends State<EditSongScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Mostrar pantalla solo después de cargar los datos
+    if (!_isDataLoaded) {
+      return Center(child: CircularProgressIndicator());
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Text("Editar Canción"),
@@ -128,7 +152,7 @@ class _EditSongScreenState extends State<EditSongScreen> {
                       _language = newValue!;
                     });
                   },
-                  items: <String>['English', 'Spanish']
+                  items: <String>['Ingles', 'Español']
                       .map<DropdownMenuItem<String>>((String value) {
                     return DropdownMenuItem<String>(
                       value: value,
@@ -138,6 +162,33 @@ class _EditSongScreenState extends State<EditSongScreen> {
                   decoration: InputDecoration(labelText: 'Idioma'),
                 ),
                 SizedBox(height: 16),
+                // Mostrar campo acceso solo si es editable
+                _isEditable
+                    ? DropdownButtonFormField<String>(
+                        value: _access,
+                        onChanged: (String? newValue) {
+                          setState(() {
+                            _access = newValue!;
+                          });
+                        },
+                        items: <String>['public', 'private']
+                            .map<DropdownMenuItem<String>>((String value) {
+                          return DropdownMenuItem<String>(
+                            value: value,
+                            child:
+                                Text(value == 'public' ? 'Público' : 'Privado'),
+                          );
+                        }).toList(),
+                        decoration: InputDecoration(labelText: 'Acceso'),
+                      )
+                    : TextFormField(
+                        initialValue:
+                            _access == 'public' ? 'Público' : 'Privado',
+                        decoration: InputDecoration(
+                          labelText: 'Acceso',
+                          enabled: false,
+                        ),
+                      ),
                 Container(
                   height: MediaQuery.of(context).size.height * 0.4,
                   child: TextFormField(

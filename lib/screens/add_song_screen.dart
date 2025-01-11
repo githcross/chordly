@@ -1,7 +1,7 @@
-// Archivo: lib/screens/add_song_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../utils/constants.dart';
 
 class AddSongScreen extends StatefulWidget {
   @override
@@ -9,14 +9,27 @@ class AddSongScreen extends StatefulWidget {
 }
 
 class _AddSongScreenState extends State<AddSongScreen> {
-  final TextEditingController _titleController = TextEditingController();
-  final TextEditingController _authorController = TextEditingController();
-  final TextEditingController _tagsController = TextEditingController();
-  final TextEditingController _lyricController = TextEditingController();
-  final TextEditingController _keyController =
-      TextEditingController(); // Nuevo campo
+  final _formKey = GlobalKey<FormState>();
+  late TextEditingController _titleController;
+  late TextEditingController _authorController;
+  late TextEditingController _lyricController;
+  late TextEditingController _tagsController;
+  late TextEditingController _baseKeyController;
+  late String _language;
+  String _access = 'public';
+  List<String> _tags = [];
+  bool _isEditable = true;
 
-  String _selectedLanguage = 'English';
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController();
+    _authorController = TextEditingController();
+    _lyricController = TextEditingController();
+    _tagsController = TextEditingController();
+    _baseKeyController = TextEditingController();
+    _language = 'Español';
+  }
 
   // Guardar la canción en Firestore
   void _saveSong() async {
@@ -29,7 +42,7 @@ class _AddSongScreenState extends State<AddSongScreen> {
         .where((e) => e.isNotEmpty)
         .toList();
     final lyric = _lyricController.text.trim();
-    final baseKey = _keyController.text.trim();
+    final baseKey = _baseKeyController.text.trim();
     final timestamp = Timestamp.now();
 
     if (user != null &&
@@ -41,12 +54,13 @@ class _AddSongScreenState extends State<AddSongScreen> {
         await FirebaseFirestore.instance.collection('songs').add({
           'title': title,
           'author': author,
-          'language': _selectedLanguage,
+          'language': _language,
           'tags': tags,
           'lyric': lyric,
           'baseKey': baseKey,
           'timestamp': timestamp,
           'userId': user.uid,
+          'access': _access,
         });
         Navigator.pop(context); // Regresar a la pantalla anterior
       } catch (e) {
@@ -71,78 +85,106 @@ class _AddSongScreenState extends State<AddSongScreen> {
         title: Text("Agregar Canción"),
         actions: [
           IconButton(
-            icon: Icon(Icons.save),
-            tooltip: 'Guardar',
-            onPressed: _saveSong, // Llamar a la función para guardar la canción
+            icon: Icon(Icons.save, color: kIconColor),
+            onPressed: _saveSong,
           ),
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: _titleController,
-              decoration: InputDecoration(
-                labelText: 'Título',
-                border: OutlineInputBorder(),
-              ),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Título
+                TextFormField(
+                  controller: _titleController,
+                  decoration: InputDecoration(labelText: 'Título'),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Por favor ingresa un título';
+                    }
+                    return null;
+                  },
+                ),
+                // Autor
+                TextFormField(
+                  controller: _authorController,
+                  decoration: InputDecoration(labelText: 'Autor'),
+                ),
+                // Etiquetas
+                TextFormField(
+                  controller: _tagsController,
+                  decoration: InputDecoration(labelText: 'Etiquetas'),
+                  onChanged: (value) {
+                    _tags = value.split(',').map((e) => e.trim()).toList();
+                  },
+                ),
+                // Clave Base
+                TextFormField(
+                  controller: _baseKeyController,
+                  decoration: InputDecoration(labelText: 'Clave Base'),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Por favor ingresa una clave base';
+                    }
+                    return null;
+                  },
+                ),
+                SizedBox(height: 16),
+                // Idioma
+                DropdownButtonFormField<String>(
+                  value: _language,
+                  onChanged: (String? newValue) {
+                    setState(() {
+                      _language = newValue!;
+                    });
+                  },
+                  items: <String>['Ingles', 'Español']
+                      .map<DropdownMenuItem<String>>((String value) {
+                    return DropdownMenuItem<String>(
+                      value: value,
+                      child: Text(value),
+                    );
+                  }).toList(),
+                  decoration: InputDecoration(labelText: 'Idioma'),
+                ),
+                SizedBox(height: 16),
+                // Acceso
+                DropdownButtonFormField<String>(
+                  value: _access,
+                  onChanged: (String? newValue) {
+                    setState(() {
+                      _access = newValue!;
+                    });
+                  },
+                  items: <String>['public', 'private']
+                      .map<DropdownMenuItem<String>>((String value) {
+                    return DropdownMenuItem<String>(
+                      value: value,
+                      child: Text(value == 'public' ? 'Público' : 'Privado'),
+                    );
+                  }).toList(),
+                  decoration: InputDecoration(labelText: 'Acceso'),
+                ),
+                // Letra
+                SizedBox(height: 16),
+                Container(
+                  height: MediaQuery.of(context).size.height * 0.4,
+                  child: TextFormField(
+                    controller: _lyricController,
+                    decoration: InputDecoration(labelText: 'Letra'),
+                    maxLines: null,
+                    keyboardType: TextInputType.multiline,
+                    textInputAction: TextInputAction.newline,
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ),
+              ],
             ),
-            SizedBox(height: 16),
-            TextField(
-              controller: _authorController,
-              decoration: InputDecoration(
-                labelText: 'Autor',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              value: _selectedLanguage,
-              onChanged: (String? newValue) {
-                setState(() {
-                  _selectedLanguage = newValue!;
-                });
-              },
-              items: <String>['English', 'Spanish']
-                  .map<DropdownMenuItem<String>>((String value) {
-                return DropdownMenuItem<String>(
-                  value: value,
-                  child: Text(value),
-                );
-              }).toList(),
-              decoration: InputDecoration(
-                labelText: 'Idioma',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            SizedBox(height: 16),
-            TextField(
-              controller: _tagsController,
-              decoration: InputDecoration(
-                labelText: 'Etiquetas (separadas por comas)',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            SizedBox(height: 16),
-            TextField(
-              controller: _keyController,
-              decoration: InputDecoration(
-                labelText: 'Clave Base',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            SizedBox(height: 16),
-            TextField(
-              controller: _lyricController,
-              decoration: InputDecoration(
-                labelText: 'Letra',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 5,
-            ),
-          ],
+          ),
         ),
       ),
     );

@@ -40,27 +40,96 @@ class HomeScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: Center(
-        child: Card(
-          elevation: 5,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: InkWell(
-            onTap: () {
-              Navigator.pushNamed(context, '/personal_songs');
-            },
-            borderRadius: BorderRadius.circular(10),
-            child: Container(
-              padding: const EdgeInsets.all(20),
-              child: Center(
-                child: Text(
-                  "Ir a Mis Canciones",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            // Card "Ir a Mis Canciones"
+            Expanded(
+              child: Card(
+                elevation: 5,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: InkWell(
+                  onTap: () {
+                    Navigator.pushNamed(context, '/personal_songs');
+                  },
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      image: DecorationImage(
+                        image: AssetImage(
+                            'lib/assets/images/songs_background.jpg'), // Imagen de fondo para "Mis Canciones"
+                        fit: BoxFit.cover,
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black
+                            .withOpacity(0.5), // Fondo oscuro semitransparente
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      padding: const EdgeInsets.all(20),
+                      child: Center(
+                        child: Text(
+                          "Ir a Mis Canciones",
+                          style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
+            SizedBox(height: 20), // Espacio entre las cards
+            // Card "Mis Listas"
+            Expanded(
+              child: Card(
+                elevation: 5,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: InkWell(
+                  onTap: () {
+                    Navigator.pushNamed(context, '/my_playlists');
+                  },
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      image: DecorationImage(
+                        image: AssetImage(
+                            'lib/assets/images/playlists_background.jpg'), // Imagen de fondo para "Mis Listas"
+                        fit: BoxFit.cover,
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.black
+                            .withOpacity(0.5), // Fondo oscuro semitransparente
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      padding: const EdgeInsets.all(20),
+                      child: Center(
+                        child: Text(
+                          "Mis Listas - (En construcción)",
+                          style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

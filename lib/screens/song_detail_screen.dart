@@ -1,10 +1,10 @@
-// lib/screens/song_detail_screen.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
+import 'teleprompter_screen.dart'; // Asegúrate de que el teleprompter screen esté importado
 import '../utils/constants.dart'; // Importando las constantes
 import 'edit_song_screen.dart'; // Si tienes una pantalla de edición para la canción
 
@@ -20,13 +20,6 @@ class SongDetailScreen extends StatefulWidget {
 class _SongDetailScreenState extends State<SongDetailScreen> {
   late String lyrics; // Almacenará la letra de la canción
   late DocumentSnapshot song; // Almacenará los datos de la canción
-
-  // Esta función se llama cuando volvemos de la pantalla de edición
-  void refreshSongData() {
-    setState(() {
-      // Actualizamos los datos de la canción desde Firebase
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -82,6 +75,18 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
             icon: Icon(Icons.share, color: Colors.black.withOpacity(0.7)),
             onPressed: () {
               _generateAndSharePDF();
+            },
+          ),
+          // Icono de Teleprompter
+          IconButton(
+            icon: Icon(Icons.screen_share, color: Colors.black.withOpacity(0.7)),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => TeleprompterScreen(lyrics: lyrics),
+                ),
+              );
             },
           ),
         ],
@@ -195,6 +200,13 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     );
   }
 
+  // Función para actualizar los datos de la canción
+  void refreshSongData() {
+    setState(() {
+      // Actualizamos los datos de la canción desde Firebase
+    });
+  }
+
   // Función para guardar los cambios en Firebase
   void saveChangesToFirebase(String updatedLyrics) async {
     await FirebaseFirestore.instance
@@ -212,8 +224,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
 
   // Función para ajustar las notas musicales
   String adjustNotes(String lyrics, int direction) {
-    final regex = RegExp(
-        r'\[([A-Ga-g#b]+)\]'); // Expresión regular para encontrar las notas dentro de []
+    final regex = RegExp(r'\[([A-Ga-g#b]+)\]');
     return lyrics.replaceAllMapped(regex, (match) {
       String note = match.group(0)!;
       String noteLetter = match.group(1)!;

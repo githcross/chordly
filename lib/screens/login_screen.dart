@@ -1,4 +1,3 @@
-// Archivo: lib/screens/login_screen.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
@@ -22,36 +21,56 @@ class LoginScreen extends StatelessWidget {
             end: Alignment.bottomRight,
           ),
         ),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.music_note,
-                size: 100,
-                color: kWhiteTextColor, // Usando el color blanco definido
+        child: Stack(
+          children: [
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.music_note,
+                    size: 100,
+                    color: kWhiteTextColor, // Usando el color blanco definido
+                  ),
+                  SizedBox(height: 20),
+                  Text(
+                    "Bienvenido a Chordly",
+                    style: kTextStyle, // Usando el estilo de texto constante
+                  ),
+                  SizedBox(height: 40),
+                  CustomButton(
+                    onPressed: () async {
+                      User? user = await _authService.signInWithGoogle();
+                      if (user != null) {
+                        Navigator.pushReplacementNamed(context, '/home');
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error al iniciar sesión')),
+                        );
+                      }
+                    },
+                    text: 'Iniciar sesión con Google',
+                  ),
+                ],
               ),
-              SizedBox(height: 20),
-              Text(
-                "Bienvenido a Chordly",
-                style: kTextStyle, // Usando el estilo de texto constante
+            ),
+            Positioned(
+              bottom: 16.0,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Text(
+                  '@devcroos',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.white
+                        .withOpacity(0.7), // Opacidad para hacerlo sutil
+                    fontWeight: FontWeight.w300, // Ligero
+                  ),
+                ),
               ),
-              SizedBox(height: 40),
-              CustomButton(
-                onPressed: () async {
-                  User? user = await _authService.signInWithGoogle();
-                  if (user != null) {
-                    Navigator.pushReplacementNamed(context, '/home');
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Error al iniciar sesión')),
-                    );
-                  }
-                },
-                text: 'Iniciar sesión con Google',
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
