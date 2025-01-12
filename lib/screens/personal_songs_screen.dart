@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import '../utils/constants.dart';
 import 'song_detail_screen.dart';
 import 'add_song_screen.dart';
+import 'archived_songs_screen.dart';
 
 class PersonalSongsScreen extends StatefulWidget {
   @override
@@ -25,6 +26,16 @@ class _PersonalSongsScreenState extends State<PersonalSongsScreen> {
       appBar: AppBar(
         title: Text("Mis Canciones", style: kTitleTextStyle),
         actions: [
+          IconButton(
+            icon: Icon(Icons.delete, size: kIconSize, color: kIconColor),
+            tooltip: "Ver canciones archivadas", // Texto para accesibilidad
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => ArchivedSongsScreen()),
+              );
+            },
+          ),
           IconButton(
             icon: Icon(Icons.share, size: kIconSize, color: kIconColor),
             onPressed: () => _shareSongs(user),
@@ -72,11 +83,12 @@ class _PersonalSongsScreenState extends State<PersonalSongsScreen> {
 
           final songs = snapshot.data!.docs;
 
-          // Filtrar canciones que son públicas o que pertenecen al usuario actual
+          // Filtrar canciones que son públicas o que pertenecen al usuario actual y no están archivadas
           final filtered = songs.where((doc) {
             final isPublic = doc['access'] == 'public';
             final isOwner = doc['userId'] == user?.uid;
-            return isPublic || isOwner;
+            final isArchived = doc['isArchived'] ?? true; // Default to archived
+            return (isPublic || isOwner) && !isArchived;
           }).toList();
 
           // Ordenar las canciones según el filtro seleccionado
@@ -105,19 +117,61 @@ class _PersonalSongsScreenState extends State<PersonalSongsScreen> {
               final author = song['author'] ?? 'Autor desconocido';
               final baseKey = song['baseKey'] ?? 'Clave no definida';
 
-              return ListTile(
-                title: Text(title),
-                subtitle: Text('$author • Clave: $baseKey'),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => SongDetailScreen(songId: song.id),
-                    ),
-                  );
+              return Dismissible(
+                key: Key(song.id), // Identificador único para cada canción
+                direction: DismissDirection
+                    .startToEnd, // Deslizar de izquierda a derecha
+                background: Container(
+                  color: Colors.red,
+                  alignment: Alignment.centerLeft,
+                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete, color: Colors.white),
+                      SizedBox(width: 10),
+                      Text(
+                        'Eliminar',
+                        style: TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+                onDismissed: (direction) async {
+                  // Actualizar el campo isArchived en Firestore
+                  try {
+                    await FirebaseFirestore.instance
+                        .collection('songs')
+                        .doc(song.id)
+                        .update({'isArchived': true});
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                          content: Text(
+                              'La canción "$title" ha sido enviada a papelera de reciclaje,  puede recuperar en la sección papelera de reciclaje o se eliminará automaticamente en 24 horas.')),
+                    );
+                  } catch (error) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                          content:
+                              Text('Error al archivar la canción: $error')),
+                    );
+                  }
                 },
-                trailing:
-                    Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                child: ListTile(
+                  title: Text(title),
+                  subtitle: Text('$author • Clave: $baseKey'),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => SongDetailScreen(songId: song.id),
+                      ),
+                    );
+                  },
+                  trailing: Icon(Icons.arrow_forward_ios,
+                      size: 16, color: Colors.grey),
+                ),
               );
             },
           );
@@ -202,7 +256,6 @@ class SongSearchDelegate extends SearchDelegate {
 
         final songs = snapshot.data!.docs;
 
-        // Filtrar canciones por búsqueda de título o autor
         final filteredSongs = songs.where((song) {
           final title = song['title']?.toLowerCase() ?? '';
           final author = song['author']?.toLowerCase() ?? '';
@@ -221,13 +274,10 @@ class SongSearchDelegate extends SearchDelegate {
               title: Text(title),
               subtitle: Text('$author'),
               onTap: () {
-                // Redirigir a la pantalla de detalles de la canción
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => SongDetailScreen(
-                        songId: song
-                            .id), // Envía el ID de la canción a la pantalla de detalle
+                    builder: (context) => SongDetailScreen(songId: song.id),
                   ),
                 );
               },

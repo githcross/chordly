@@ -61,6 +61,7 @@ class _AddSongScreenState extends State<AddSongScreen> {
           'timestamp': timestamp,
           'userId': user.uid,
           'access': _access,
+          'isArchived': false,
         });
         Navigator.pop(context); // Regresar a la pantalla anterior
       } catch (e) {
