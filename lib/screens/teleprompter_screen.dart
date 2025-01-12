@@ -49,7 +49,8 @@ class _TeleprompterScreenState extends State<TeleprompterScreen> {
   // Función para mostrar u ocultar acordes en la letra
   String _adjustLyricsForChords() {
     if (!_showChords) {
-      final regex = RegExp(r'\(([A-Ga-g#b]+)\)');
+      // Expresión regular modificada para incluir acordes menores
+      final regex = RegExp(r'\(([A-Ga-g#b]+m?#?)\)');
       return widget.lyrics.replaceAll(regex, ''); // Eliminar acordes
     }
     return widget.lyrics;

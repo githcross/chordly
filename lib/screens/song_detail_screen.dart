@@ -106,7 +106,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
           lyrics = song['lyric'];
 
           // Cambiar expresión regular para encontrar notas dentro de ()
-          final regex = RegExp(r'\(([A-Ga-g#b]+)\)');
+          final regex = RegExp(r'\(([A-Ga-g#b]+[mM]?)\)');
           final matches = regex.allMatches(lyrics);
 
           List<TextSpan> textSpans = [];
@@ -205,15 +205,58 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
   }
 
   String adjustNotes(String lyrics, int direction) {
-    final regex = RegExp(r'\(([A-Ga-g#b]+)\)');
+    final regex = RegExp(r'\(([A-Ga-g#b]+[mM]?)\)');
     return lyrics.replaceAllMapped(regex, (match) {
-      String note = match.group(0)!;
-      String noteLetter = match.group(1)!;
+      String chord = match.group(0)!;
+      String chordName = match.group(1)!;
 
-      String adjustedNote = shiftNote(noteLetter, direction);
+      String adjustedChord = shiftChord(chordName, direction);
 
-      return note.replaceFirst(noteLetter, adjustedNote);
+      return chord.replaceFirst(chordName, adjustedChord);
     });
+  }
+
+  String shiftChord(String chord, int direction) {
+    const notes = [
+      'C',
+      'C#',
+      'D',
+      'D#',
+      'E',
+      'F',
+      'F#',
+      'G',
+      'G#',
+      'A',
+      'A#',
+      'B'
+    ];
+
+    const minorChords = [
+      'Cm',
+      'C#m',
+      'Dm',
+      'D#m',
+      'Em',
+      'Fm',
+      'F#m',
+      'Gm',
+      'G#m',
+      'Am',
+      'A#m',
+      'Bm'
+    ];
+
+    // Si el acorde es menor, tratamos de ajustarlo
+    if (minorChords.contains(chord)) {
+      // Quitar el 'm' al final
+      chord = chord.substring(0, chord.length - 1);
+      String adjustedNote = shiftNote(chord, direction);
+      return '$adjustedNote' + 'm'; // Reconstruir el acorde menor
+    }
+
+    // Si no es un acorde menor, simplemente ajustamos la nota como antes
+    return shiftNote(chord, direction);
   }
 
   String shiftNote(String note, int direction) {
