@@ -4,9 +4,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
-import 'teleprompter_screen.dart'; // Asegúrate de que el teleprompter screen esté importado
-import '../utils/constants.dart'; // Importando las constantes
-import 'edit_song_screen.dart'; // Si tienes una pantalla de edición para la canción
+import 'teleprompter_screen.dart';
+import '../utils/constants.dart';
+import 'edit_song_screen.dart';
 
 class SongDetailScreen extends StatefulWidget {
   final String songId;
@@ -18,8 +18,8 @@ class SongDetailScreen extends StatefulWidget {
 }
 
 class _SongDetailScreenState extends State<SongDetailScreen> {
-  late String lyrics; // Almacenará la letra de la canción
-  late DocumentSnapshot song; // Almacenará los datos de la canción
+  late String lyrics;
+  late DocumentSnapshot song;
 
   @override
   Widget build(BuildContext context) {
@@ -28,58 +28,51 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
         title: Text("Detalles de la Canción",
             style:
                 TextStyle(fontFamily: 'Roboto', fontWeight: FontWeight.w500)),
-        backgroundColor:
-            Colors.transparent, // Fondo transparente para un aspecto limpio
-        elevation: 0, // Elimina la sombra del AppBar
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         actions: [
-          // Icono de edición
           IconButton(
             icon: Icon(Icons.edit, color: Colors.black.withOpacity(0.7)),
             onPressed: () {
-              // Navegar a la pantalla de edición
               Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => EditSongScreen(songId: widget.songId),
                 ),
               ).then((_) {
-                // Al regresar de la pantalla de edición, recargamos los datos
                 refreshSongData();
               });
             },
           ),
-          // Icono para bajar medio tono
           IconButton(
             icon: Icon(Icons.arrow_downward, color: Colors.blueAccent),
             onPressed: () {
               setState(() {
-                lyrics = adjustNotes(lyrics, -1); // Bajar medio tono
+                lyrics = adjustNotes(lyrics, -1);
               });
-              saveChangesToFirebase(lyrics); // Guardar cambios en Firebase
+              saveChangesToFirebase(lyrics);
             },
             iconSize: 30,
           ),
-          // Icono para subir medio tono
           IconButton(
             icon: Icon(Icons.arrow_upward, color: Colors.blueAccent),
             onPressed: () {
               setState(() {
-                lyrics = adjustNotes(lyrics, 1); // Subir medio tono
+                lyrics = adjustNotes(lyrics, 1);
               });
-              saveChangesToFirebase(lyrics); // Guardar cambios en Firebase
+              saveChangesToFirebase(lyrics);
             },
             iconSize: 30,
           ),
-          // Icono para compartir como PDF
           IconButton(
             icon: Icon(Icons.share, color: Colors.black.withOpacity(0.7)),
             onPressed: () {
               _generateAndSharePDF();
             },
           ),
-          // Icono de Teleprompter
           IconButton(
-            icon: Icon(Icons.screen_share, color: Colors.black.withOpacity(0.7)),
+            icon:
+                Icon(Icons.screen_share, color: Colors.black.withOpacity(0.7)),
             onPressed: () {
               Navigator.push(
                 context,
@@ -109,20 +102,17 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
             return Center(child: Text("La canción no existe."));
           }
 
-          song = snapshot.data!; // Guardamos los datos de la canción
-          lyrics = song['lyric']; // Almacenamos la letra de la canción
+          song = snapshot.data!;
+          lyrics = song['lyric'];
 
-          // Usamos una expresión regular para encontrar las notas dentro de []
-          final regex = RegExp(r'\[([A-Ga-g#b]+)\]');
+          // Cambiar expresión regular para encontrar notas dentro de ()
+          final regex = RegExp(r'\(([A-Ga-g#b]+)\)');
           final matches = regex.allMatches(lyrics);
 
-          // Creamos una lista de TextSpans
           List<TextSpan> textSpans = [];
           int lastEnd = 0;
 
-          // Iteramos sobre las coincidencias y las agregamos a textSpans
           for (final match in matches) {
-            // Agregar el texto anterior
             if (match.start > lastEnd) {
               textSpans.add(TextSpan(
                   text: lyrics.substring(lastEnd, match.start),
@@ -130,12 +120,11 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
                       color: Colors.black.withOpacity(0.8), fontSize: 16)));
             }
 
-            // Agregar la nota musical con el estilo celeste
             textSpans.add(TextSpan(
               text: match.group(0),
               style: TextStyle(
-                color: Colors.blueAccent, // Color relajante y moderno
-                decoration: TextDecoration.underline, // Subrayado
+                color: Colors.blueAccent,
+                decoration: TextDecoration.underline,
                 fontWeight: FontWeight.bold,
               ),
             ));
@@ -143,7 +132,6 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
             lastEnd = match.end;
           }
 
-          // Agregar el resto del texto después de la última coincidencia
           if (lastEnd < lyrics.length) {
             textSpans.add(TextSpan(
                 text: lyrics.substring(lastEnd),
@@ -169,8 +157,7 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
                       style: TextStyle(
                           fontSize: 16, color: Colors.black.withOpacity(0.7))),
                   SizedBox(height: 8),
-                  Text(
-                      "Clave Base: ${song['baseKey']}", // Mostrar la clave base
+                  Text("Clave Base: ${song['baseKey']}",
                       style: TextStyle(
                           fontSize: 16, color: Colors.black.withOpacity(0.7))),
                   SizedBox(height: 8),
@@ -200,21 +187,16 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     );
   }
 
-  // Función para actualizar los datos de la canción
   void refreshSongData() {
-    setState(() {
-      // Actualizamos los datos de la canción desde Firebase
-    });
+    setState(() {});
   }
 
-  // Función para guardar los cambios en Firebase
   void saveChangesToFirebase(String updatedLyrics) async {
     await FirebaseFirestore.instance
         .collection('songs')
         .doc(widget.songId)
         .update({
-      'lyric':
-          updatedLyrics, // Actualizamos la letra con las nuevas notas ajustadas
+      'lyric': updatedLyrics,
     }).then((_) {
       print("Letra actualizada en Firebase");
     }).catchError((error) {
@@ -222,22 +204,18 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
     });
   }
 
-  // Función para ajustar las notas musicales
   String adjustNotes(String lyrics, int direction) {
-    final regex = RegExp(r'\[([A-Ga-g#b]+)\]');
+    final regex = RegExp(r'\(([A-Ga-g#b]+)\)');
     return lyrics.replaceAllMapped(regex, (match) {
       String note = match.group(0)!;
       String noteLetter = match.group(1)!;
 
-      // Subir o bajar medio tono
       String adjustedNote = shiftNote(noteLetter, direction);
 
-      // Reemplazar la nota ajustada en el texto original
       return note.replaceFirst(noteLetter, adjustedNote);
     });
   }
 
-  // Función para cambiar medio tono de una nota
   String shiftNote(String note, int direction) {
     const notes = [
       'C',
@@ -254,23 +232,15 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
       'B'
     ];
 
-    // Si la nota es con bemol, lo manejamos por separado
-    if (note.length > 1 && note.endsWith('b')) {
-      note = note.substring(0, note.length - 1); // Eliminar el 'b'
-    }
-
     int index = notes.indexOf(note);
-    if (index == -1) return note; // Si la nota no es válida
+    if (index == -1) return note;
 
     int newIndex = (index + direction) % notes.length;
-    if (newIndex < 0)
-      newIndex += notes.length; // Asegurarse de que no se salga del rango
+    if (newIndex < 0) newIndex += notes.length;
 
-    // Reañadimos el 'b' (bemol) si la nota lo tenía
-    return note.endsWith('b') ? '${notes[newIndex]}b' : notes[newIndex];
+    return notes[newIndex];
   }
 
-  // Función para generar y compartir el PDF
   void _generateAndSharePDF() async {
     final pdf = pw.Document();
 
