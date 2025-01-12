@@ -12,8 +12,8 @@ class TeleprompterScreen extends StatefulWidget {
 class _TeleprompterScreenState extends State<TeleprompterScreen> {
   late ScrollController _scrollController;
   double _scrollSpeed = 30.0; // Velocidad inicial
-  bool _showChords = false; // Por defecto, los acordes están ocultos
-  bool _isPlaying = true; // Controlar estado Play/Pausa
+  bool _showChords = false; // Mostrar los acordes o no
+  bool _isPlaying = true; // Control de Play/Pause
 
   @override
   void initState() {
@@ -28,7 +28,7 @@ class _TeleprompterScreenState extends State<TeleprompterScreen> {
     });
   }
 
-  // Función para iniciar o reiniciar el desplazamiento
+  // Función para iniciar el desplazamiento
   void _startScrolling() {
     if (_scrollController.hasClients && _isPlaying) {
       _scrollController.animateTo(
@@ -52,7 +52,7 @@ class _TeleprompterScreenState extends State<TeleprompterScreen> {
     }
   }
 
-  // Función para mostrar u ocultar acordes en la letra
+  // Función para ajustar la letra (eliminar acordes si no se muestran)
   String _adjustLyricsForChords() {
     if (!_showChords) {
       final regex = RegExp(r'\(([A-Ga-g#b]+m?#?)\)'); // Acordes en la letra
@@ -61,21 +61,46 @@ class _TeleprompterScreenState extends State<TeleprompterScreen> {
     return widget.lyrics;
   }
 
-  // Función para alternar Play/Pausa
-  void _togglePlayPause() {
-    setState(() {
-      _isPlaying = !_isPlaying;
-      if (_isPlaying) {
-        _startScrolling(); // Reanudar desplazamiento
-      } else {
-        _stopScrolling(); // Detener desplazamiento
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     String displayedLyrics = _adjustLyricsForChords();
+
+    // Expresión regular para manejar los acordes en la letra
+    final regex = RegExp(r'\(([A-Ga-g#b]+m?#?)\)');
+    final matches = regex.allMatches(displayedLyrics);
+
+    List<TextSpan> textSpans = [];
+    int lastEnd = 0;
+
+    for (final match in matches) {
+      if (match.start > lastEnd) {
+        textSpans.add(TextSpan(
+            text: displayedLyrics.substring(lastEnd, match.start),
+            style: TextStyle(
+                color: Colors.white,
+                fontSize: 48,
+                fontWeight: FontWeight.bold)));
+      }
+
+      // Acorde
+      textSpans.add(TextSpan(
+        text: match.group(0),
+        style: TextStyle(
+          color: Colors.blueAccent,
+          fontSize: 48,
+          fontWeight: FontWeight.bold,
+        ),
+      ));
+
+      lastEnd = match.end;
+    }
+
+    if (lastEnd < displayedLyrics.length) {
+      textSpans.add(TextSpan(
+          text: displayedLyrics.substring(lastEnd),
+          style: TextStyle(
+              color: Colors.white, fontSize: 48, fontWeight: FontWeight.bold)));
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -90,14 +115,9 @@ class _TeleprompterScreenState extends State<TeleprompterScreen> {
             controller: _scrollController,
             child: Padding(
               padding: const EdgeInsets.all(16.0),
-              child: Text(
-                displayedLyrics,
-                style: TextStyle(
-                  fontSize: 48,
-                  color: Colors.white,
-                  fontFamily: 'Roboto',
-                  fontWeight: FontWeight.bold,
-                  height: 1.5,
+              child: RichText(
+                text: TextSpan(
+                  children: textSpans,
                 ),
               ),
             ),
@@ -180,6 +200,18 @@ class _TeleprompterScreenState extends State<TeleprompterScreen> {
       ),
       backgroundColor: Colors.black,
     );
+  }
+
+  // Función para alternar Play/Pausa
+  void _togglePlayPause() {
+    setState(() {
+      _isPlaying = !_isPlaying;
+      if (_isPlaying) {
+        _startScrolling(); // Reanudar desplazamiento
+      } else {
+        _stopScrolling(); // Detener desplazamiento
+      }
+    });
   }
 
   @override
