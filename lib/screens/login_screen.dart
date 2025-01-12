@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
 import '../widgets/custom_button.dart'; // Botón reutilizable
 import '../utils/constants.dart'; // Importando las constantes
+import 'package:package_info_plus/package_info_plus.dart'; // Importando el paquete
 
 class LoginScreen extends StatelessWidget {
   final AuthService _authService = AuthService();
@@ -54,19 +55,48 @@ class LoginScreen extends StatelessWidget {
                 ],
               ),
             ),
+            // Texto @devcross 2025
+            Positioned(
+              bottom: 36.0, // Ajusta para que aparezca por encima de la versión
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Text(
+                  '@devcross 2025',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.white.withOpacity(0.7),
+                    fontWeight: FontWeight.w300, // Ligero
+                  ),
+                ),
+              ),
+            ),
+            // Versión de la aplicación
             Positioned(
               bottom: 16.0,
               left: 0,
               right: 0,
               child: Center(
-                child: Text(
-                  '@devcroos',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.white
-                        .withOpacity(0.7), // Opacidad para hacerlo sutil
-                    fontWeight: FontWeight.w300, // Ligero
-                  ),
+                child: FutureBuilder<PackageInfo>(
+                  future: PackageInfo
+                      .fromPlatform(), // Obteniendo la información de la app
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.done) {
+                      // Una vez que la información esté cargada, mostramos la versión
+                      return Text(
+                        'Versión: ${snapshot.data!.version}', // Mostramos la versión
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white
+                              .withOpacity(0.7), // Opacidad para hacerlo sutil
+                          fontWeight: FontWeight.w300, // Ligero
+                        ),
+                      );
+                    } else {
+                      // Mientras cargamos, mostramos un indicador o texto vacío
+                      return CircularProgressIndicator();
+                    }
+                  },
                 ),
               ),
             ),

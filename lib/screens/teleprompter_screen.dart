@@ -19,7 +19,13 @@ class _TeleprompterScreenState extends State<TeleprompterScreen> {
   void initState() {
     super.initState();
     _scrollController = ScrollController();
-    _startScrolling();
+
+    // Usamos addPostFrameCallback para iniciar el desplazamiento después de la carga inicial
+    WidgetsBinding.instance!.addPostFrameCallback((_) {
+      if (_isPlaying) {
+        _startScrolling();
+      }
+    });
   }
 
   // Función para iniciar o reiniciar el desplazamiento
@@ -49,8 +55,7 @@ class _TeleprompterScreenState extends State<TeleprompterScreen> {
   // Función para mostrar u ocultar acordes en la letra
   String _adjustLyricsForChords() {
     if (!_showChords) {
-      // Expresión regular modificada para incluir acordes menores
-      final regex = RegExp(r'\(([A-Ga-g#b]+m?#?)\)');
+      final regex = RegExp(r'\(([A-Ga-g#b]+m?#?)\)'); // Acordes en la letra
       return widget.lyrics.replaceAll(regex, ''); // Eliminar acordes
     }
     return widget.lyrics;
