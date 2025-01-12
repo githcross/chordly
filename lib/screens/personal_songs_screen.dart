@@ -88,6 +88,7 @@ class _PersonalSongsScreenState extends State<PersonalSongsScreen> {
                 .sort((a, b) => (b['title'] ?? '').compareTo(a['title'] ?? ''));
           }
 
+          // Filtrar las canciones según el texto de búsqueda
           filteredSongs = filtered.where((song) {
             final title = song['title']?.toLowerCase() ?? '';
             final author = song['author']?.toLowerCase() ?? '';
@@ -182,7 +183,59 @@ class SongSearchDelegate extends SearchDelegate {
 
   @override
   Widget buildResults(BuildContext context) {
-    return Center(child: Text("Implementa la búsqueda si es necesario"));
+    final searchQueryLower = query.toLowerCase();
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('songs').snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          return Center(child: Text("Error: ${snapshot.error}"));
+        }
+
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return Center(child: Text("No se encontraron coincidencias."));
+        }
+
+        final songs = snapshot.data!.docs;
+
+        // Filtrar canciones por búsqueda de título o autor
+        final filteredSongs = songs.where((song) {
+          final title = song['title']?.toLowerCase() ?? '';
+          final author = song['author']?.toLowerCase() ?? '';
+          return title.contains(searchQueryLower) ||
+              author.contains(searchQueryLower);
+        }).toList();
+
+        return ListView.builder(
+          itemCount: filteredSongs.length,
+          itemBuilder: (ctx, index) {
+            final song = filteredSongs[index];
+            final title = song['title'] ?? 'Sin título';
+            final author = song['author'] ?? 'Autor desconocido';
+
+            return ListTile(
+              title: Text(title),
+              subtitle: Text('$author'),
+              onTap: () {
+                // Redirigir a la pantalla de detalles de la canción
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => SongDetailScreen(
+                        songId: song
+                            .id), // Envía el ID de la canción a la pantalla de detalle
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
