@@ -164,18 +164,45 @@ class _SongsScreenState extends State<SongsScreen> {
               setState(() {});
             },
           ),
-          StreamBuilder<QuerySnapshot>(
+          StreamBuilder<DocumentSnapshot>(
             stream: FirebaseFirestore.instance
-                .collection('songs')
-                .where('isArchived', isEqualTo: false)
+                .collection('communities')
+                .doc(widget.groupId)
                 .snapshots(),
             builder: (context, snapshot) {
-              final songs = snapshot.data?.docs ?? [];
-              return IconButton(
-                icon: Icon(Icons.share, size: kIconSize, color: kIconColor),
-                onPressed: () => _shareSongs(songs
-                    .map((doc) => doc.data() as Map<String, dynamic>)
-                    .toList()),
+              if (!snapshot.hasData)
+                return IconButton(
+                  icon: Icon(Icons.share, size: kIconSize, color: kIconColor),
+                  onPressed: null,
+                );
+
+              final groupData = snapshot.data!.data() as Map<String, dynamic>;
+              var groupSongs =
+                  List<Map<String, dynamic>>.from(groupData['songs'] ?? []);
+
+              return StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('songs')
+                    .where('isArchived', isEqualTo: false)
+                    .snapshots(),
+                builder: (context, songsSnapshot) {
+                  if (!songsSnapshot.hasData)
+                    return IconButton(
+                      icon:
+                          Icon(Icons.share, size: kIconSize, color: kIconColor),
+                      onPressed: null,
+                    );
+
+                  var filteredSongs = groupSongs.where((groupSong) {
+                    return songsSnapshot.data!.docs
+                        .any((doc) => doc.id == groupSong['songId']);
+                  }).toList();
+
+                  return IconButton(
+                    icon: Icon(Icons.share, size: kIconSize, color: kIconColor),
+                    onPressed: () => _shareSongs(filteredSongs),
+                  );
+                },
               );
             },
           ),
