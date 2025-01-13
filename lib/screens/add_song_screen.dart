@@ -20,6 +20,8 @@ class _AddSongScreenState extends State<AddSongScreen> {
   List<String> _tags = [];
   bool _isEditable = true;
 
+  String? _creatorName;
+
   @override
   void initState() {
     super.initState();
@@ -29,6 +31,50 @@ class _AddSongScreenState extends State<AddSongScreen> {
     _tagsController = TextEditingController();
     _baseKeyController = TextEditingController();
     _language = 'Español';
+
+    _getCreatorName();
+  }
+
+  // Obtener el nombre del creador dependiendo del proveedor de autenticación
+  void _getCreatorName() async {
+    final User? user = FirebaseAuth.instance.currentUser;
+
+    if (user != null) {
+      try {
+        // Verificar el proveedor de autenticación
+        final userProvider = user.providerData.first.providerId;
+
+        // Si el proveedor es Google, usar directamente el nombre del usuario
+        if (userProvider == 'google.com') {
+          setState(() {
+            _creatorName = user.displayName ?? 'Desconocido';
+          });
+        }
+        // Si el proveedor es Facebook, usar directamente el nombre del usuario
+        else if (userProvider == 'facebook.com') {
+          setState(() {
+            _creatorName = user.displayName ?? 'Desconocido';
+          });
+        } else {
+          // Para otros proveedores, buscar el nombre en Firestore
+          final userSnapshot = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .get();
+
+          if (userSnapshot.exists) {
+            setState(() {
+              _creatorName = userSnapshot.data()?['name'] ?? 'Desconocido';
+            });
+          }
+        }
+      } catch (e) {
+        print('Error al obtener el nombre del creador: $e');
+        setState(() {
+          _creatorName = 'Desconocido'; // Valor por defecto en caso de error
+        });
+      }
+    }
   }
 
   // Guardar la canción en Firestore
@@ -60,6 +106,7 @@ class _AddSongScreenState extends State<AddSongScreen> {
           'baseKey': baseKey,
           'timestamp': timestamp,
           'userId': user.uid,
+          'creatorName': _creatorName ?? 'Desconocido', // Nombre del creador
           'access': _access,
           'isArchived': false,
         });

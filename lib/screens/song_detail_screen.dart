@@ -20,6 +20,8 @@ class SongDetailScreen extends StatefulWidget {
 class _SongDetailScreenState extends State<SongDetailScreen> {
   late String lyrics;
   late DocumentSnapshot song;
+  late String
+      creatorName; // Nueva variable para almacenar el nombre del creador
 
   @override
   Widget build(BuildContext context) {
@@ -104,6 +106,8 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
 
           song = snapshot.data!;
           lyrics = song['lyric'];
+          creatorName = song['creatorName'] ??
+              'Desconocido'; // Obtener el nombre del creador
 
           // Cambiar expresión regular para encontrar notas dentro de ()
           final regex = RegExp(r'\(([A-Ga-g#b]+[mM]?)\)');
@@ -172,6 +176,11 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
                   ),
                   SizedBox(height: 16),
                   Text("Etiquetas: ${song['tags'].join(', ')}",
+                      style: TextStyle(
+                          fontSize: 14, color: Colors.black.withOpacity(0.6))),
+                  SizedBox(height: 8),
+                  Text(
+                      "Creado por: $creatorName", // Mostrar el nombre del creador
                       style: TextStyle(
                           fontSize: 14, color: Colors.black.withOpacity(0.6))),
                   SizedBox(height: 8),
