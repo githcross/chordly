@@ -10,8 +10,13 @@ import 'edit_song_screen.dart';
 
 class SongDetailScreen extends StatefulWidget {
   final String songId;
+  final bool isArchived;
 
-  SongDetailScreen({required this.songId});
+  const SongDetailScreen({
+    Key? key,
+    required this.songId,
+    this.isArchived = false,
+  }) : super(key: key);
 
   @override
   _SongDetailScreenState createState() => _SongDetailScreenState();
@@ -33,57 +38,59 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
-          IconButton(
-            icon: Icon(Icons.edit, color: Colors.black.withOpacity(0.7)),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => EditSongScreen(songId: widget.songId),
-                ),
-              ).then((_) {
-                refreshSongData();
-              });
-            },
-          ),
-          IconButton(
-            icon: Icon(Icons.arrow_downward, color: Colors.blueAccent),
-            onPressed: () {
-              setState(() {
-                lyrics = adjustNotes(lyrics, -1);
-              });
-              saveChangesToFirebase(lyrics);
-            },
-            iconSize: 30,
-          ),
-          IconButton(
-            icon: Icon(Icons.arrow_upward, color: Colors.blueAccent),
-            onPressed: () {
-              setState(() {
-                lyrics = adjustNotes(lyrics, 1);
-              });
-              saveChangesToFirebase(lyrics);
-            },
-            iconSize: 30,
-          ),
-          IconButton(
-            icon: Icon(Icons.share, color: Colors.black.withOpacity(0.7)),
-            onPressed: () {
-              _generateAndSharePDF();
-            },
-          ),
-          IconButton(
-            icon:
-                Icon(Icons.screen_share, color: Colors.black.withOpacity(0.7)),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => TeleprompterScreen(lyrics: lyrics),
-                ),
-              );
-            },
-          ),
+          if (!widget.isArchived) ...[
+            IconButton(
+              icon: Icon(Icons.edit, color: Colors.black.withOpacity(0.7)),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => EditSongScreen(songId: widget.songId),
+                  ),
+                ).then((_) {
+                  refreshSongData();
+                });
+              },
+            ),
+            IconButton(
+              icon: Icon(Icons.arrow_downward, color: Colors.blueAccent),
+              onPressed: () {
+                setState(() {
+                  lyrics = adjustNotes(lyrics, -1);
+                });
+                saveChangesToFirebase(lyrics);
+              },
+              iconSize: 30,
+            ),
+            IconButton(
+              icon: Icon(Icons.arrow_upward, color: Colors.blueAccent),
+              onPressed: () {
+                setState(() {
+                  lyrics = adjustNotes(lyrics, 1);
+                });
+                saveChangesToFirebase(lyrics);
+              },
+              iconSize: 30,
+            ),
+            IconButton(
+              icon: Icon(Icons.share, color: Colors.black.withOpacity(0.7)),
+              onPressed: () {
+                _generateAndSharePDF();
+              },
+            ),
+            IconButton(
+              icon: Icon(Icons.screen_share,
+                  color: Colors.black.withOpacity(0.7)),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => TeleprompterScreen(lyrics: lyrics),
+                  ),
+                );
+              },
+            ),
+          ],
         ],
       ),
       body: FutureBuilder<DocumentSnapshot>(

@@ -3,8 +3,9 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
-import 'screens/personal_songs_screen.dart';
+import 'screens/songs_screen.dart';
 import 'screens/profile_screen.dart';
+import 'screens/songs_screen.dart';
 import 'utils/constants.dart'; // Importando las constantes si las necesitas
 
 void main() async {
@@ -17,7 +18,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Login',
+      title: 'Chordly',
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
@@ -26,7 +27,6 @@ class MyApp extends StatelessWidget {
         '/': (context) => LoginScreen(),
         '/home': (context) => HomeScreen(),
         '/profile': (context) => ProfileScreen(),
-        '/personal_songs': (context) => PersonalSongsScreen(),
       },
     );
   }

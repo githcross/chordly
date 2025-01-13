@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'song_detail_screen.dart';
 
 class ArchivedSongsScreen extends StatefulWidget {
   @override
@@ -14,58 +15,51 @@ class _ArchivedSongsScreenState extends State<ArchivedSongsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text("Canciones eliminadas"),
+        title: Text('Canciones Archivadas'),
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('songs').snapshots(),
+        stream: FirebaseFirestore.instance
+            .collection('songs')
+            .where('isArchived', isEqualTo: true)
+            .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator());
           }
 
           if (snapshot.hasError) {
-            return Center(child: Text("Error: ${snapshot.error}"));
+            return Center(child: Text('Error: ${snapshot.error}'));
           }
 
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return Center(child: Text("No hay canciones archivadas."));
-          }
+          final songs = snapshot.data?.docs ?? [];
 
-          final songs = snapshot.data!.docs;
-
-          // Filtrar canciones según las reglas de acceso y estado archivado
-          final archivedSongs = songs.where((doc) {
-            final isOwner = doc['userId'] == user?.uid;
-            final isArchived = doc['isArchived'] ?? false;
-            final isPublic = doc['access'] == 'public';
-            return isArchived && (isPublic || isOwner);
-          }).toList();
-
-          if (archivedSongs.isEmpty) {
-            return Center(child: Text("No hay canciones eliminadas."));
+          if (songs.isEmpty) {
+            return Center(
+              child: Text(
+                'No hay canciones archivadas',
+                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+              ),
+            );
           }
 
           return ListView.builder(
-            itemCount: archivedSongs.length,
-            itemBuilder: (ctx, index) {
-              final song = archivedSongs[index];
-              final title = song['title'] ?? 'Sin título';
-              final author = song['author'] ?? 'Autor desconocido';
-              final baseKey = song['baseKey'] ?? 'Clave no definida';
-
+            itemCount: songs.length,
+            itemBuilder: (context, index) {
+              final song = songs[index].data() as Map<String, dynamic>;
               return Dismissible(
-                key: Key(song.id), // Identificador único para cada canción
+                key: Key(songs[index].id),
                 direction: DismissDirection.startToEnd,
                 background: Container(
                   color: Colors.red,
-                  alignment: Alignment.centerLeft,
+                  alignment: Alignment.centerRight,
                   padding: EdgeInsets.symmetric(horizontal: 20),
                   child: Row(
+                    mainAxisAlignment: MainAxisAlignment.start,
                     children: [
-                      Icon(Icons.delete_forever, color: Colors.white),
+                      Icon(Icons.delete, color: Colors.white),
                       SizedBox(width: 10),
                       Text(
-                        'Eliminar definitivamente',
+                        'Eliminar permanentemente',
                         style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
@@ -74,58 +68,164 @@ class _ArchivedSongsScreenState extends State<ArchivedSongsScreen> {
                     ],
                   ),
                 ),
+                confirmDismiss: (direction) async {
+                  return await showDialog(
+                    context: context,
+                    builder: (BuildContext context) {
+                      return AlertDialog(
+                        title: Text('Confirmar eliminación'),
+                        content: Text(
+                            '¿Estás seguro de eliminar permanentemente esta canción?'),
+                        actions: <Widget>[
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(false),
+                            child: Text('Cancelar'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(true),
+                            child: Text('Eliminar',
+                                style: TextStyle(color: Colors.red)),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
                 onDismissed: (direction) async {
                   try {
-                    // Eliminar permanentemente la canción de Firestore
+                    final String songIdToDelete = songs[index].id;
+
+                    // 1. Eliminar de la colección songs
                     await FirebaseFirestore.instance
                         .collection('songs')
-                        .doc(song.id)
+                        .doc(songIdToDelete)
                         .delete();
 
+                    // 2. Obtener todas las communities
+                    final communitiesSnapshot = await FirebaseFirestore.instance
+                        .collection('communities')
+                        .get();
+
+                    // 3. Revisar y actualizar cada community
+                    for (var doc in communitiesSnapshot.docs) {
+                      var communityData = doc.data();
+                      if (communityData.containsKey('songs')) {
+                        var songsList = List<Map<String, dynamic>>.from(
+                            communityData['songs']);
+
+                        // Verificar si la canción está en esta community
+                        int initialLength = songsList.length;
+                        songsList.removeWhere(
+                            (song) => song['songId'] == songIdToDelete);
+                        bool songWasRemoved = songsList.length < initialLength;
+
+                        // Si se removió la canción, actualizar la community
+                        if (songWasRemoved) {
+                          await doc.reference.update({'songs': songsList});
+                        }
+                      }
+                    }
+
+                    if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text(
-                          'La canción "$title" ha sido eliminada definitivamente.',
+                        content: Row(
+                          children: [
+                            Icon(Icons.delete_forever, color: Colors.white),
+                            SizedBox(width: 8),
+                            Text('Canción eliminada permanentemente'),
+                          ],
                         ),
+                        duration: Duration(seconds: 2),
+                        margin: EdgeInsets.only(
+                          bottom: 20,
+                          left: 16,
+                          right: 16,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        behavior: SnackBarBehavior.floating,
                       ),
                     );
-                  } catch (error) {
+                  } catch (e) {
+                    if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('Error al eliminar: $error'),
+                        content: Row(
+                          children: [
+                            Icon(Icons.error, color: Colors.white),
+                            SizedBox(width: 8),
+                            Text('Error al eliminar la canción: $e'),
+                          ],
+                        ),
+                        margin: EdgeInsets.only(
+                          bottom: 20,
+                          left: 16,
+                          right: 16,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        behavior: SnackBarBehavior.floating,
                       ),
                     );
                   }
                 },
                 child: ListTile(
-                  title: Text(title),
-                  subtitle: Text('$author • Clave: $baseKey'),
+                  leading: Icon(Icons.music_note),
+                  title: Text(song['title'] ?? 'Sin título'),
+                  subtitle: Text(song['author'] ?? 'Autor desconocido'),
                   trailing: IconButton(
-                    icon: Icon(Icons.unarchive, color: Colors.green),
-                    tooltip: "Recuperar",
+                    icon: Icon(Icons.unarchive),
                     onPressed: () async {
                       try {
+                        // Cambiar estado a no archivado y esperar a que se complete
                         await FirebaseFirestore.instance
                             .collection('songs')
-                            .doc(song.id)
+                            .doc(songs[index].id)
                             .update({'isArchived': false});
 
+                        // Mostrar mensaje después de que la actualización se complete
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text(
-                              'La canción "$title" se ha recuperado.',
+                            content: Text('Canción restaurada'),
+                            duration: Duration(seconds: 2),
+                            margin: EdgeInsets.all(8),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
                             ),
+                            behavior: SnackBarBehavior.floating,
                           ),
                         );
-                      } catch (error) {
+                      } catch (e) {
+                        if (!mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text('Error al recuperar: $error'),
+                            content: Text('Error al restaurar la canción: $e'),
+                            margin: EdgeInsets.all(8),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            behavior: SnackBarBehavior.floating,
                           ),
                         );
                       }
                     },
                   ),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => SongDetailScreen(
+                          songId: songs[index].id,
+                          isArchived: true,
+                        ),
+                      ),
+                    );
+                  },
                 ),
               );
             },

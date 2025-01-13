@@ -37,6 +37,7 @@ class _EditSongScreenState extends State<EditSongScreen> {
     _baseKeyController = TextEditingController();
     _language = 'Español';
     _fetchSongData();
+    _fetchCommunitiesWithSong(); // Añadir esta línea para obtener las comunidades
   }
 
   // Recuperar los datos de la canción desde Firebase
@@ -73,19 +74,66 @@ class _EditSongScreenState extends State<EditSongScreen> {
   }
 
   // Guardar los cambios en Firebase
-  void _saveChanges() {
+  void _saveChanges() async {
     if (_formKey.currentState!.validate()) {
-      FirebaseFirestore.instance.collection('songs').doc(widget.songId).update({
-        'title': _titleController.text,
-        'author': _authorController.text,
-        'lyric': _lyricController.text,
-        'tags': _tags,
-        'language': _language,
-        'baseKey': _baseKeyController.text,
-        'access': _access, // Guardar el acceso actualizado
-      });
-      Navigator.pop(context);
+      try {
+        // 1. Actualizar la canción en la colección songs
+        await FirebaseFirestore.instance
+            .collection('songs')
+            .doc(widget.songId)
+            .update({
+          'title': _titleController.text,
+          'author': _authorController.text,
+          'lyric': _lyricController.text,
+          'tags': _tags,
+          'language': _language,
+          'baseKey': _baseKeyController.text,
+          'access': _access,
+        });
+
+        // 2. Obtener todas las comunidades que tienen esta canción
+        final communitiesQuery =
+            await FirebaseFirestore.instance.collection('communities').get();
+
+        // 3. Actualizar la canción en cada comunidad que la contenga
+        for (var doc in communitiesQuery.docs) {
+          var songs =
+              List<Map<String, dynamic>>.from(doc.data()['songs'] ?? []);
+          var songIndex = songs.indexWhere((s) => s['songId'] == widget.songId);
+
+          if (songIndex != -1) {
+            // Actualizar solo los campos necesarios en communities
+            songs[songIndex] = {
+              'songId': widget.songId,
+              'title': _titleController.text,
+              'author': _authorController.text,
+              'baseKey': _baseKeyController.text,
+            };
+
+            await doc.reference.update({'songs': songs});
+          }
+        }
+
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Canción actualizada exitosamente')),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al actualizar la canción: $e')),
+        );
+      }
     }
+  }
+
+  void _fetchCommunitiesWithSong() async {
+    final songRef = FirebaseFirestore.instance
+        .collection('communities')
+        .where('songs', arrayContains: {'songId': widget.songId});
+
+    final querySnapshot = await songRef.get();
+    // Puedes usar querySnapshot.docs para acceder a las comunidades
+    // que contienen esta canción si lo necesitas más adelante
   }
 
   @override

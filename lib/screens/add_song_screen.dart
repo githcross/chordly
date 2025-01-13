@@ -4,6 +4,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../utils/constants.dart';
 
 class AddSongScreen extends StatefulWidget {
+  final String groupId;
+
+  const AddSongScreen({
+    Key? key,
+    required this.groupId,
+  }) : super(key: key);
+
   @override
   _AddSongScreenState createState() => _AddSongScreenState();
 }
@@ -97,7 +104,9 @@ class _AddSongScreenState extends State<AddSongScreen> {
         lyric.isNotEmpty &&
         baseKey.isNotEmpty) {
       try {
-        await FirebaseFirestore.instance.collection('songs').add({
+        // Crear la canción en la colección songs
+        final docRef =
+            await FirebaseFirestore.instance.collection('songs').add({
           'title': title,
           'author': author,
           'language': _language,
@@ -106,13 +115,33 @@ class _AddSongScreenState extends State<AddSongScreen> {
           'baseKey': baseKey,
           'timestamp': timestamp,
           'userId': user.uid,
-          'creatorName': _creatorName ?? 'Desconocido', // Nombre del creador
+          'creatorName': _creatorName ?? 'Desconocido',
           'access': _access,
           'isArchived': false,
+          'groupId': widget.groupId,
         });
-        Navigator.pop(context); // Regresar a la pantalla anterior
+
+        // Agregar la referencia de la canción al grupo
+        await FirebaseFirestore.instance
+            .collection('communities')
+            .doc(widget.groupId)
+            .update({
+          'songs': FieldValue.arrayUnion([
+            {
+              'songId': docRef.id,
+              'title': title,
+              'author': author,
+              'baseKey': baseKey,
+            }
+          ])
+        });
+
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Canción guardada exitosamente')),
+        );
       } catch (e) {
-        _showErrorSnackBar('Error al guardar la canción.');
+        _showErrorSnackBar('Error al guardar la canción: $e');
       }
     } else {
       _showErrorSnackBar('Por favor, completa todos los campos.');
