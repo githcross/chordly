@@ -135,7 +135,6 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
               text: match.group(0),
               style: TextStyle(
                 color: Colors.blueAccent,
-                decoration: TextDecoration.underline,
                 fontWeight: FontWeight.bold,
               ),
             ));
@@ -164,11 +163,11 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
                       style: TextStyle(
                           fontSize: 16, color: Colors.black.withOpacity(0.7))),
                   SizedBox(height: 8),
-                  Text("Idioma: ${song['language']}",
+                  Text("Clave Base: ${song['baseKey']}",
                       style: TextStyle(
                           fontSize: 16, color: Colors.black.withOpacity(0.7))),
                   SizedBox(height: 8),
-                  Text("Clave Base: ${song['baseKey']}",
+                  Text("BPM: ${song['tempo']}",
                       style: TextStyle(
                           fontSize: 16, color: Colors.black.withOpacity(0.7))),
                   SizedBox(height: 8),
@@ -183,6 +182,16 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
                   ),
                   SizedBox(height: 16),
                   Text("Etiquetas: ${song['tags'].join(', ')}",
+                      style: TextStyle(
+                          fontSize: 14, color: Colors.black.withOpacity(0.6))),
+                  SizedBox(height: 8),
+                  Text(
+                      "Duración: ${song['duration']}", // Mostrar el nombre del creador
+                      style: TextStyle(
+                          fontSize: 14, color: Colors.black.withOpacity(0.6))),
+                  SizedBox(height: 8),
+                  Text(
+                      "Idioma: ${song['language']}", // Mostrar el nombre del creador
                       style: TextStyle(
                           fontSize: 14, color: Colors.black.withOpacity(0.6))),
                   SizedBox(height: 8),
@@ -314,13 +323,20 @@ class _SongDetailScreenState extends State<SongDetailScreen> {
                       fontSize: 18, fontWeight: pw.FontWeight.bold)),
               pw.Text('Autor: ${song['author']}',
                   style: pw.TextStyle(color: PdfColors.grey)),
-              pw.Text('Idioma: ${song['language']}',
-                  style: pw.TextStyle(color: PdfColors.grey)),
               pw.Text('Clave Base: ${song['baseKey']}',
                   style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+              pw.Text('BPM: ${song['tempo']}',
+                  style: pw.TextStyle(color: PdfColors.grey)),
+              pw.SizedBox(height: 10),
               pw.Text('Letra:'),
               pw.SizedBox(height: 10),
               pw.Text('$lyrics'),
+              pw.SizedBox(height: 10),
+              pw.Text('Idioma: ${song['language']}',
+                  style: pw.TextStyle(color: PdfColors.grey)),
+              pw.SizedBox(height: 10),
+              pw.Text('Duración: ${song['duration']}',
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
               pw.SizedBox(height: 10),
               pw.Text('Etiquetas: ${song['tags'].join(', ')}',
                   style: pw.TextStyle(color: PdfColors.grey)),
