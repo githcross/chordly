@@ -172,6 +172,129 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
+  void _showInvitationsDialog(BuildContext context, User? user) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Invitaciones Pendientes'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('invitations')
+                .where('email', isEqualTo: user?.email)
+                .where('status', isEqualTo: 'pending')
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return Center(child: CircularProgressIndicator());
+              }
+
+              if (snapshot.data!.docs.isEmpty) {
+                return Text('No tienes invitaciones pendientes');
+              }
+
+              return ListView.builder(
+                shrinkWrap: true,
+                itemCount: snapshot.data!.docs.length,
+                itemBuilder: (context, index) {
+                  final invitation = snapshot.data!.docs[index];
+                  return FutureBuilder<DocumentSnapshot>(
+                    future: FirebaseFirestore.instance
+                        .collection('communities')
+                        .doc(invitation['groupId'])
+                        .get(),
+                    builder: (context, groupSnapshot) {
+                      if (!groupSnapshot.hasData) {
+                        return ListTile(title: Text('Cargando...'));
+                      }
+
+                      final groupData =
+                          groupSnapshot.data!.data() as Map<String, dynamic>;
+                      return ListTile(
+                        title: Text(groupData['name']),
+                        subtitle: Text('Te han invitado a unirte'),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: Icon(Icons.check, color: Colors.green),
+                              onPressed: () => _acceptInvitation(
+                                invitation.id,
+                                invitation['groupId'],
+                                user,
+                                context,
+                              ),
+                            ),
+                            IconButton(
+                              icon: Icon(Icons.close, color: Colors.red),
+                              onPressed: () => _rejectInvitation(
+                                invitation.id,
+                                context,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _acceptInvitation(String invitationId, String groupId,
+      User? user, BuildContext context) async {
+    if (user == null) return;
+    try {
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        transaction.update(
+          FirebaseFirestore.instance
+              .collection('invitations')
+              .doc(invitationId),
+          {'status': 'accepted'},
+        );
+        transaction.update(
+          FirebaseFirestore.instance.collection('communities').doc(groupId),
+          {
+            'members': FieldValue.arrayUnion([
+              {
+                'userId': user.uid,
+                'email': user.email,
+                'name': user.displayName,
+                'photoURL': user.photoURL,
+              }
+            ])
+          },
+        );
+      });
+      Navigator.pop(context);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al aceptar la invitación: $e')),
+      );
+    }
+  }
+
+  Future<void> _rejectInvitation(
+      String invitationId, BuildContext context) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('invitations')
+          .doc(invitationId)
+          .update({'status': 'rejected'});
+      Navigator.pop(context);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al rechazar la invitación: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final User? user = FirebaseAuth.instance.currentUser;
@@ -198,14 +321,51 @@ class HomeScreen extends StatelessWidget {
                 }
               },
             ),
-            IconButton(
-              icon:
-                  Icon(Icons.notifications, size: kIconSize, color: kIconColor),
-              tooltip: 'Notificaciones',
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                      content: Text('Función de notificaciones en desarrollo')),
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('invitations')
+                  .where('email', isEqualTo: user?.email)
+                  .where('status', isEqualTo: 'pending')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                int invitationCount =
+                    snapshot.hasData ? snapshot.data!.docs.length : 0;
+
+                return Stack(
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.notifications,
+                          size: kIconSize, color: kIconColor),
+                      tooltip: 'Invitaciones',
+                      onPressed: () {
+                        _showInvitationsDialog(context, user);
+                      },
+                    ),
+                    if (invitationCount > 0)
+                      Positioned(
+                        right: 8,
+                        top: 8,
+                        child: Container(
+                          padding: EdgeInsets.all(2),
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          constraints: BoxConstraints(
+                            minWidth: 16,
+                            minHeight: 16,
+                          ),
+                          child: Text(
+                            '$invitationCount',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                  ],
                 );
               },
             ),
