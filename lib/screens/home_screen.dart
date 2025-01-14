@@ -176,92 +176,95 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final User? user = FirebaseAuth.instance.currentUser;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("Chordly", style: kTitleTextStyle),
-        actions: [
-          // Icono para crear nuevo grupo
-          IconButton(
-            icon: Icon(Icons.group_add, size: kIconSize, color: kIconColor),
-            tooltip: 'Crear Grupo',
-            onPressed: () {
-              if (user != null) {
-                _showCreateGroupDialog(context, user);
-              } else {
+    return WillPopScope(
+      onWillPop: () async => false,
+      child: Scaffold(
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          title: Text("Chordly", style: kTitleTextStyle),
+          actions: [
+            IconButton(
+              icon: Icon(Icons.group_add, size: kIconSize, color: kIconColor),
+              tooltip: 'Crear Grupo',
+              onPressed: () {
+                if (user != null) {
+                  _showCreateGroupDialog(context, user);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                        content:
+                            Text('Debes iniciar sesión para crear un grupo')),
+                  );
+                }
+              },
+            ),
+            IconButton(
+              icon:
+                  Icon(Icons.notifications, size: kIconSize, color: kIconColor),
+              tooltip: 'Notificaciones',
+              onPressed: () {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                      content:
-                          Text('Debes iniciar sesión para crear un grupo')),
+                      content: Text('Función de notificaciones en desarrollo')),
                 );
-              }
-            },
-          ),
-          // Icono de notificaciones
-          IconButton(
-            icon: Icon(Icons.notifications, size: kIconSize, color: kIconColor),
-            tooltip: 'Notificaciones',
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                    content: Text('Función de notificaciones en desarrollo')),
-              );
-            },
-          ),
-          // Menú de perfil
-          if (user != null)
-            PopupMenuButton(
-              icon: CircleAvatar(
-                radius: 15,
-                backgroundImage: NetworkImage(user.photoURL ?? ''),
-              ),
-              itemBuilder: (BuildContext context) => [
-                PopupMenuItem(
-                  child: ListTile(
-                    leading: Icon(Icons.person),
-                    title: Text('Mi Perfil'),
-                    onTap: () {
-                      Navigator.pushNamed(context, '/profile');
-                    },
-                  ),
-                ),
-                PopupMenuItem(
-                  child: ListTile(
-                    leading: Icon(Icons.logout),
-                    title: Text('Cerrar Sesión'),
-                    onTap: () async {
-                      await _authService.signOut();
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(builder: (context) => LoginScreen()),
-                      );
-                    },
-                  ),
-                ),
-              ],
+              },
             ),
-        ],
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Mis Grupos',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(height: 16),
-            Expanded(
-              child: user != null
-                  ? _buildGroupsList(user)
-                  : Center(
-                      child: Text('Inicia sesión para ver tus grupos'),
+            if (user != null)
+              PopupMenuButton(
+                icon: CircleAvatar(
+                  radius: 15,
+                  backgroundImage: NetworkImage(user.photoURL ?? ''),
+                ),
+                itemBuilder: (BuildContext context) => [
+                  PopupMenuItem(
+                    child: ListTile(
+                      leading: Icon(Icons.person),
+                      title: Text('Mi Perfil'),
+                      onTap: () {
+                        Navigator.pushNamed(context, '/profile');
+                      },
                     ),
-            ),
+                  ),
+                  PopupMenuItem(
+                    child: ListTile(
+                      leading: Icon(Icons.logout),
+                      title: Text('Cerrar Sesión'),
+                      onTap: () async {
+                        await _authService.signOut();
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                              builder: (context) => LoginScreen()),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
           ],
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Mis Grupos',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              SizedBox(height: 16),
+              Expanded(
+                child: user != null
+                    ? _buildGroupsList(user)
+                    : Center(
+                        child: Text('Inicia sesión para ver tus grupos'),
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );
