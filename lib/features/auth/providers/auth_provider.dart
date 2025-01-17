@@ -6,11 +6,11 @@ part 'auth_provider.g.dart';
 
 @riverpod
 class Auth extends _$Auth {
-  late final AuthRepository _authRepository = AuthRepository();
+  late final _authRepository = AuthRepository(ref);
 
   @override
   Stream<User?> build() {
-    return FirebaseAuth.instance.authStateChanges();
+    return _authRepository.authStateChanges;
   }
 
   Future<void> signInWithGoogle() async {

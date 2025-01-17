@@ -4,6 +4,7 @@ import 'package:chordly/features/auth/providers/auth_provider.dart';
 import 'package:chordly/features/groups/providers/groups_provider.dart';
 import 'package:chordly/features/groups/models/group_model.dart';
 import 'package:chordly/features/groups/presentation/screens/home_group_screen.dart';
+import 'package:chordly/features/groups/services/firestore_service.dart';
 
 class GroupListItem extends StatelessWidget {
   final GroupModel group;
@@ -197,15 +198,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   itemCount: groups.length,
                   itemBuilder: (context, index) {
                     final group = groups[index];
-                    // Aquí deberías obtener el rol real del usuario en el grupo
-                    // Por ahora usaremos un rol de ejemplo
-                    final role = group.createdBy == user?.uid
-                        ? GroupRole.admin
-                        : GroupRole.member;
+                    return FutureBuilder<String?>(
+                      future: ref
+                          .read(firestoreServiceProvider)
+                          .getUserRoleInGroup(group.id, user?.uid ?? ''),
+                      builder: (context, snapshot) {
+                        final role = snapshot.data != null
+                            ? GroupRole.values.firstWhere(
+                                (r) => r.name == snapshot.data,
+                                orElse: () => GroupRole.member,
+                              )
+                            : GroupRole.member;
 
-                    return GroupListItem(
-                      group: group,
-                      role: role,
+                        return GroupListItem(
+                          group: group,
+                          role: role,
+                        );
+                      },
                     );
                   },
                 );

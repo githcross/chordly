@@ -6,7 +6,24 @@ part of 'groups_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$groupsHash() => r'e9e21f8b3ea99516fb4e9b6b5ef608610c2d92de';
+String _$firestoreServiceHash() => r'0f8fc3ed9acdb2d77cdfb4f0d713961c9a50352e';
+
+/// See also [firestoreService].
+@ProviderFor(firestoreService)
+final firestoreServiceProvider = AutoDisposeProvider<FirestoreService>.internal(
+  firestoreService,
+  name: r'firestoreServiceProvider',
+  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+      ? null
+      : _$firestoreServiceHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
+
+@Deprecated('Will be removed in 3.0. Use Ref instead')
+// ignore: unused_element
+typedef FirestoreServiceRef = AutoDisposeProviderRef<FirestoreService>;
+String _$groupsHash() => r'69e067dcd276c61bc3f9f8a8c9bed3a4296fcea9';
 
 /// See also [Groups].
 @ProviderFor(Groups)
@@ -21,7 +38,7 @@ final groupsProvider =
 );
 
 typedef _$Groups = AutoDisposeStreamNotifier<List<GroupModel>>;
-String _$filteredGroupsHash() => r'b09a2c289b1ca6aca9a2e63ba75ca782db46dddd';
+String _$filteredGroupsHash() => r'7dd9f208e261f448161d4a448ed69e87c29bf11a';
 
 /// Copied from Dart SDK
 class _SystemHash {

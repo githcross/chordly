@@ -1,11 +1,19 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:chordly/features/groups/services/firestore_service.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:chordly/features/groups/providers/groups_provider.dart';
 
 class AuthRepository {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  final FirebaseAuth _auth;
+  final GoogleSignIn _googleSignIn;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final Ref ref;
+
+  AuthRepository(this.ref)
+      : _auth = FirebaseAuth.instance,
+        _googleSignIn = GoogleSignIn();
 
   Future<UserCredential> signInWithGoogle() async {
     try {
@@ -24,7 +32,7 @@ class AuthRepository {
 
       // Crear o actualizar documento del usuario en Firestore
       if (userCredential.user != null) {
-        await _createOrUpdateUserDocument(userCredential.user!);
+        await _createUserDocument(userCredential.user!);
       }
 
       return userCredential;
@@ -33,17 +41,17 @@ class AuthRepository {
     }
   }
 
-  Future<void> _createOrUpdateUserDocument(User user) async {
-    final userDoc = _firestore.collection('users').doc(user.uid);
-
+  Future<void> _createUserDocument(User user) async {
     final userData = {
       'email': user.email,
-      'name': user.displayName,
+      'displayName': user.displayName ?? user.email?.split('@')[0],
       'profilePicture': user.photoURL,
       'lastLogin': FieldValue.serverTimestamp(),
     };
 
-    await userDoc.set(userData, SetOptions(merge: true));
+    await ref
+        .read(firestoreServiceProvider)
+        .createOrUpdateUser(user.uid, userData);
   }
 
   Future<void> signOut() async {
@@ -52,4 +60,6 @@ class AuthRepository {
       _googleSignIn.signOut(),
     ]);
   }
+
+  Stream<User?> get authStateChanges => _auth.authStateChanges();
 }
