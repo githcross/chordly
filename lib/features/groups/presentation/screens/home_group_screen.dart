@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chordly/features/groups/models/group_model.dart';
 import 'package:chordly/features/groups/presentation/screens/edit_group_screen.dart';
 import 'package:chordly/features/groups/presentation/screens/group_info_screen.dart';
+import 'package:chordly/features/songs/presentation/screens/add_song_screen.dart';
 
 class HomeGroupScreen extends ConsumerWidget {
   final GroupModel group;
@@ -86,10 +87,12 @@ class HomeGroupScreen extends ConsumerWidget {
                     title: const Text('Agregar Canción'),
                     onTap: () {
                       Navigator.pop(context);
-                      // TODO: Implementar agregar canción
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Próximamente: Agregar canción'),
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => AddSongScreen(
+                            groupId: group.id,
+                          ),
                         ),
                       );
                     },
