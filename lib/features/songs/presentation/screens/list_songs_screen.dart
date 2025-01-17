@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:chordly/features/groups/models/group_model.dart';
 import 'package:chordly/features/songs/models/song_model.dart';
 import 'package:chordly/features/songs/presentation/delegates/song_search_delegate.dart';
+import 'package:chordly/features/songs/presentation/screens/deleted_songs_screen.dart';
 
 class ListSongsScreen extends ConsumerStatefulWidget {
   final GroupModel group;
@@ -34,7 +35,14 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
             icon: const Icon(Icons.delete_outline),
             tooltip: 'Canciones eliminadas',
             onPressed: () {
-              // TODO: Implementar vista de canciones inactivas
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => DeletedSongsScreen(
+                    group: widget.group,
+                  ),
+                ),
+              );
             },
           ),
           // Botón para compartir PDF
@@ -318,13 +326,12 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
 
   Future<void> _inactivateSong(SongModel song) async {
     try {
-      await FirebaseFirestore.instance
-          .collection('songs')
-          .doc(song.id)
-          .update({'isActive': false});
+      await FirebaseFirestore.instance.collection('songs').doc(song.id).update({
+        'isActive': false,
+        'deletedAt': FieldValue.serverTimestamp(),
+      });
 
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('Canción eliminada'),
@@ -334,7 +341,10 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
               await FirebaseFirestore.instance
                   .collection('songs')
                   .doc(song.id)
-                  .update({'isActive': true});
+                  .update({
+                'isActive': true,
+                'deletedAt': FieldValue.delete(),
+              });
             },
           ),
         ),
