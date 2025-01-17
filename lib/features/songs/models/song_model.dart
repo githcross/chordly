@@ -15,6 +15,7 @@ class SongModel {
   final DateTime createdAt;
   final String groupId;
   final List<String> playlists;
+  final bool isActive;
 
   SongModel({
     required this.id,
@@ -31,6 +32,7 @@ class SongModel {
     required this.createdAt,
     required this.groupId,
     required this.playlists,
+    this.isActive = true,
   });
 
   factory SongModel.fromMap(String id, Map<String, dynamic> map) {
@@ -49,6 +51,7 @@ class SongModel {
       createdAt: (map['createdAt'] as Timestamp).toDate(),
       groupId: map['groupId'] ?? '',
       playlists: List<String>.from(map['playlists'] ?? []),
+      isActive: map['isActive'] ?? true,
     );
   }
 
@@ -67,6 +70,7 @@ class SongModel {
       'createdAt': Timestamp.fromDate(createdAt),
       'groupId': groupId,
       'playlists': playlists,
+      'isActive': isActive,
     };
   }
 
@@ -101,6 +105,7 @@ class SongModel {
       createdAt: createdAt ?? this.createdAt,
       groupId: groupId ?? this.groupId,
       playlists: playlists ?? this.playlists,
+      isActive: this.isActive,
     );
   }
 }

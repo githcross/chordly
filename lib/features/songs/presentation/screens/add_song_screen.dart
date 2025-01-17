@@ -214,7 +214,7 @@ class _AddSongScreenState extends ConsumerState<AddSongScreen> {
       }
 
       // Continuar con el guardado
-      final song = {
+      final songData = {
         'title': newTitle,
         'author': _authorController.text,
         'lyrics': _lyricsController.text,
@@ -230,9 +230,10 @@ class _AddSongScreenState extends ConsumerState<AddSongScreen> {
         'createdAt': FieldValue.serverTimestamp(),
         'groupId': widget.groupId,
         'playlists': [],
+        'isActive': true,
       };
 
-      await FirebaseFirestore.instance.collection('songs').add(song);
+      await FirebaseFirestore.instance.collection('songs').add(songData);
 
       if (mounted) {
         Navigator.pop(context);

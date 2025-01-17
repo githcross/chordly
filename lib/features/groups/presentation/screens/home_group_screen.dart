@@ -4,6 +4,8 @@ import 'package:chordly/features/groups/models/group_model.dart';
 import 'package:chordly/features/groups/presentation/screens/edit_group_screen.dart';
 import 'package:chordly/features/groups/presentation/screens/group_info_screen.dart';
 import 'package:chordly/features/songs/presentation/screens/add_song_screen.dart';
+import 'package:chordly/features/songs/presentation/screens/list_songs_screen.dart';
+import 'package:chordly/features/songs/providers/songs_provider.dart';
 
 class HomeGroupScreen extends ConsumerWidget {
   final GroupModel group;
@@ -46,9 +48,20 @@ class HomeGroupScreen extends ConsumerWidget {
               _HorizontalCategoryCard(
                 title: 'Canciones',
                 icon: Icons.music_note,
-                count: 0, // TODO: Obtener conteo real
+                count: ref.watch(songsCountProvider(group.id)).when(
+                      data: (count) => count,
+                      loading: () => 0,
+                      error: (_, __) => 0,
+                    ),
                 onTap: () {
-                  // TODO: Navegar a lista de canciones
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ListSongsScreen(
+                        group: group,
+                      ),
+                    ),
+                  );
                 },
               ),
               const SizedBox(height: 16),
