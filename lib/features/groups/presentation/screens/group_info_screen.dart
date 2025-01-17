@@ -5,6 +5,7 @@ import 'package:chordly/features/groups/models/group_membership.dart';
 import 'package:chordly/features/groups/services/firestore_service.dart';
 import 'package:chordly/features/groups/providers/groups_provider.dart';
 import 'package:chordly/features/auth/providers/auth_provider.dart';
+import 'package:chordly/features/groups/providers/group_members_provider.dart';
 
 class GroupInfoScreen extends ConsumerStatefulWidget {
   final GroupModel group;
@@ -213,165 +214,175 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
         ],
       ),
       body: SafeArea(
-        child: StreamBuilder<List<GroupMembership>>(
-          stream: ref
-              .watch(firestoreServiceProvider)
-              .getGroupMembers(widget.group.id),
-          builder: (context, snapshot) {
-            if (snapshot.hasError) {
-              return Center(child: Text('Error: ${snapshot.error}'));
-            }
+        child: Consumer(
+          builder: (context, ref, child) {
+            return StreamBuilder<List<GroupMembership>>(
+              stream: ref
+                  .watch(firestoreServiceProvider)
+                  .getGroupMembers(widget.group.id),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}'));
+                }
 
-            if (!snapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
-            }
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-            final members = snapshot.data!;
-            final admins = members
-                .where((m) =>
-                    m.role.toLowerCase() == GroupRole.admin.name.toLowerCase())
-                .toList();
-            final regularMembers = members
-                .where((m) =>
-                    m.role.toLowerCase() != GroupRole.admin.name.toLowerCase())
-                .toList();
+                final members = snapshot.data!;
+                final admins = members
+                    .where((m) =>
+                        m.role.toLowerCase() ==
+                        GroupRole.admin.name.toLowerCase())
+                    .toList();
+                final regularMembers = members
+                    .where((m) =>
+                        m.role.toLowerCase() !=
+                        GroupRole.admin.name.toLowerCase())
+                    .toList();
 
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Detalles del grupo
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        children: [
-                          CircleAvatar(
-                            radius: 50,
-                            backgroundImage: widget.group.imageUrl != null
-                                ? NetworkImage(widget.group.imageUrl!)
-                                : null,
-                            child: widget.group.imageUrl == null
-                                ? const Icon(Icons.group, size: 50)
-                                : null,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            widget.group.name,
-                            style: Theme.of(context).textTheme.headlineSmall,
-                          ),
-                          if (widget.group.description.isNotEmpty) ...[
-                            const SizedBox(height: 8),
-                            Text(widget.group.description),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Estadísticas
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Estadísticas',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                          const SizedBox(height: 16),
-                          _StatItem(
-                            icon: Icons.people,
-                            title: 'Miembros',
-                            value: members.length.toString(),
-                          )
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Lista de miembros
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Detalles del grupo
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
                             children: [
-                              Text(
-                                'Miembros',
-                                style: Theme.of(context).textTheme.titleLarge,
+                              CircleAvatar(
+                                radius: 50,
+                                backgroundImage: widget.group.imageUrl != null
+                                    ? NetworkImage(widget.group.imageUrl!)
+                                    : null,
+                                child: widget.group.imageUrl == null
+                                    ? const Icon(Icons.group, size: 50)
+                                    : null,
                               ),
-                              if (widget.userRole == GroupRole.admin)
-                                IconButton(
-                                  icon: const Icon(Icons.person_add),
-                                  onPressed: () => _showInviteDialog(context),
-                                ),
+                              const SizedBox(height: 16),
+                              Text(
+                                widget.group.name,
+                                style:
+                                    Theme.of(context).textTheme.headlineSmall,
+                              ),
+                              if (widget.group.description.isNotEmpty) ...[
+                                const SizedBox(height: 8),
+                                Text(widget.group.description),
+                              ],
                             ],
                           ),
-                          const SizedBox(height: 16),
-                          // Administradores
-                          ...admins.map((member) => _MemberListItem(
-                                name: member.displayName,
-                                email: member.email,
-                                role: GroupRole.admin,
-                                isOnline: member.isOnline,
-                                lastSeen: member.lastSeen,
-                                canEdit: widget.userRole == GroupRole.admin,
-                                onEditRole: () =>
-                                    _showEditRoleDialog(context, member),
-                              )),
-                          // Miembros regulares
-                          ...regularMembers.map((member) => _MemberListItem(
-                                name: member.displayName,
-                                email: member.email,
-                                role: GroupRole.values.firstWhere(
-                                  (r) => r.name == member.role,
-                                  orElse: () => GroupRole.member,
-                                ),
-                                isOnline: member.isOnline,
-                                lastSeen: member.lastSeen,
-                                canEdit: widget.userRole == GroupRole.admin,
-                                onEditRole: () =>
-                                    _showEditRoleDialog(context, member),
-                              )),
-                        ],
+                        ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
+                      const SizedBox(height: 16),
 
-                  // Botón de eliminar/salir
-                  if (widget.userRole == GroupRole.admin)
-                    FilledButton.icon(
-                      onPressed: () {
-                        // TODO: Implementar eliminación
-                      },
-                      icon: const Icon(Icons.delete_forever),
-                      label: const Text('Eliminar Grupo'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        padding: const EdgeInsets.all(16),
+                      // Estadísticas
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Estadísticas',
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                              const SizedBox(height: 16),
+                              _StatItem(
+                                icon: Icons.people,
+                                title: 'Miembros',
+                                value: members.length.toString(),
+                              )
+                            ],
+                          ),
+                        ),
                       ),
-                    )
-                  else
-                    OutlinedButton.icon(
-                      onPressed: () => _showLeaveConfirmation(context),
-                      icon: const Icon(Icons.exit_to_app),
-                      label: const Text('Abandonar Grupo'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.red,
-                        padding: const EdgeInsets.all(16),
+                      const SizedBox(height: 16),
+
+                      // Lista de miembros
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'Miembros',
+                                    style:
+                                        Theme.of(context).textTheme.titleLarge,
+                                  ),
+                                  if (widget.userRole == GroupRole.admin)
+                                    IconButton(
+                                      icon: const Icon(Icons.person_add),
+                                      onPressed: () =>
+                                          _showInviteDialog(context),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              // Administradores
+                              ...admins.map((member) => _MemberListItem(
+                                    name: member.displayName,
+                                    email: member.email,
+                                    role: GroupRole.admin,
+                                    isOnline: member.isOnline,
+                                    lastSeen: member.lastSeen,
+                                    canEdit: widget.userRole == GroupRole.admin,
+                                    onEditRole: () =>
+                                        _showEditRoleDialog(context, member),
+                                  )),
+                              // Miembros regulares
+                              ...regularMembers.map((member) => _MemberListItem(
+                                    name: member.displayName,
+                                    email: member.email,
+                                    role: GroupRole.values.firstWhere(
+                                      (r) => r.name == member.role,
+                                      orElse: () => GroupRole.member,
+                                    ),
+                                    isOnline: member.isOnline,
+                                    lastSeen: member.lastSeen,
+                                    canEdit: widget.userRole == GroupRole.admin,
+                                    onEditRole: () =>
+                                        _showEditRoleDialog(context, member),
+                                  )),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
-                ],
-              ),
+                      const SizedBox(height: 16),
+
+                      // Botón de eliminar/salir
+                      if (widget.userRole == GroupRole.admin)
+                        FilledButton.icon(
+                          onPressed: () {
+                            // TODO: Implementar eliminación
+                          },
+                          icon: const Icon(Icons.delete_forever),
+                          label: const Text('Eliminar Grupo'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            padding: const EdgeInsets.all(16),
+                          ),
+                        )
+                      else
+                        OutlinedButton.icon(
+                          onPressed: () => _showLeaveConfirmation(context),
+                          icon: const Icon(Icons.exit_to_app),
+                          label: const Text('Abandonar Grupo'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red,
+                            padding: const EdgeInsets.all(16),
+                          ),
+                        ),
+                    ],
+                  ),
+                );
+              },
             );
           },
         ),

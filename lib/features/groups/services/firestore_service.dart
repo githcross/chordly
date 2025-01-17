@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:chordly/features/groups/models/group_membership.dart';
 import 'package:chordly/features/groups/models/group_invitation_model.dart';
 import 'package:chordly/features/groups/models/group_model.dart';
+import 'package:async/async.dart';
+import 'package:rxdart/rxdart.dart';
 
 class FirestoreService {
   final firestore = FirebaseFirestore.instance;
@@ -87,42 +89,48 @@ class FirestoreService {
   }
 
   Stream<List<GroupMembership>> getGroupMembers(String groupId) {
-    return firestore
+    // 1. Obtener el stream de membresías
+    final membershipStream = firestore
         .collection('groups')
         .doc(groupId)
         .collection('memberships')
-        .snapshots()
-        .asyncMap((snapshot) async {
-      final members = <GroupMembership>[];
+        .snapshots();
 
-      for (var doc in snapshot.docs) {
-        final data = doc.data();
-        final userId = data['user_id'] as String;
+    // 2. Obtener el stream de usuarios
+    final userStream = firestore.collection('users').snapshots();
 
-        // Obtener información del usuario
-        final userDoc = await firestore.collection('users').doc(userId).get();
-        if (userDoc.exists) {
-          final userData = userDoc.data()!;
-          members.add(
-            GroupMembership(
-              userId: userId,
-              email: userData['email'] ?? '',
-              displayName:
-                  userData['displayName'] ?? userData['email'] ?? 'Usuario',
-              profilePicture: userData['profilePicture'],
-              role: data['role'] ?? 'member',
-              isCreator: data['is_creator'] ?? false,
-              joinedAt: (data['joined_at'] as Timestamp).toDate(),
-              isOnline: userData['isOnline'] ?? false,
-              lastSeen: userData['lastSeen'] != null
-                  ? (userData['lastSeen'] as Timestamp).toDate()
-                  : null,
-            ),
+    // 3. Combinar ambos streams
+    return Rx.combineLatest2(
+      membershipStream,
+      userStream,
+      (QuerySnapshot memberships, QuerySnapshot users) {
+        final userMap = Map.fromEntries(
+          users.docs.map(
+              (doc) => MapEntry(doc.id, doc.data() as Map<String, dynamic>)),
+        );
+
+        return memberships.docs.map((memberDoc) {
+          final memberData = memberDoc.data() as Map<String, dynamic>;
+          final userId = memberData['user_id'] as String;
+          final userData = userMap[userId] ?? {};
+
+          return GroupMembership(
+            userId: userId,
+            email: userData['email'] ?? '',
+            displayName:
+                userData['displayName'] ?? userData['email'] ?? 'Usuario',
+            profilePicture: userData['profilePicture'],
+            role: memberData['role'] ?? 'member',
+            isCreator: memberData['is_creator'] ?? false,
+            joinedAt: (memberData['joined_at'] as Timestamp).toDate(),
+            isOnline: userData['isOnline'] ?? false,
+            lastSeen: userData['lastSeen'] != null
+                ? (userData['lastSeen'] as Timestamp).toDate()
+                : null,
           );
-        }
-      }
-      return members;
-    });
+        }).toList();
+      },
+    ).asBroadcastStream();
   }
 
   Future<List<Map<String, dynamic>>> searchUsers(String query) async {
