@@ -262,4 +262,20 @@ class FirestoreService {
       'lastSeen': FieldValue.serverTimestamp(),
     });
   }
+
+  // Actualizar rol de miembro
+  Future<void> updateMemberRole({
+    required String groupId,
+    required String userId,
+    required String newRole,
+  }) async {
+    await firestore
+        .collection('groups')
+        .doc(groupId)
+        .collection('memberships')
+        .doc(userId)
+        .update({
+      'role': newRole,
+    });
+  }
 }

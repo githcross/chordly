@@ -111,21 +111,46 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Editar Rol'),
+        title: Text('Editar rol de ${member.displayName}'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: GroupRole.values.map((role) {
-            return RadioListTile<GroupRole>(
+            return ListTile(
               title: Text(role.name.toUpperCase()),
-              value: role,
-              groupValue: GroupRole.values.firstWhere(
-                (r) => r.name == member.role,
-                orElse: () => GroupRole.member,
+              leading: Icon(
+                role == GroupRole.admin
+                    ? Icons.admin_panel_settings
+                    : Icons.person,
+                color: role.color,
               ),
-              onChanged: (newRole) async {
-                if (newRole != null) {
-                  // TODO: Implementar cambio de rol
-                  Navigator.pop(context);
+              selected: role.name == member.role,
+              onTap: () async {
+                try {
+                  await ref.read(firestoreServiceProvider).updateMemberRole(
+                        groupId: widget.group.id,
+                        userId: member.userId,
+                        newRole: role.name,
+                      );
+
+                  if (mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                            'Rol de ${member.displayName} actualizado a ${role.name.toUpperCase()}'),
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Error al actualizar rol: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
                 }
               },
             );
@@ -445,15 +470,6 @@ class _MemberListItem extends StatelessWidget {
     required this.onEditRole,
   });
 
-  String _getLastSeenText() {
-    if (lastSeen == null) return '';
-    final difference = DateTime.now().difference(lastSeen!);
-    if (difference.inMinutes < 1) return 'Hace un momento';
-    if (difference.inHours < 1) return 'Hace ${difference.inMinutes} minutos';
-    if (difference.inDays < 1) return 'Hace ${difference.inHours} horas';
-    return 'Hace ${difference.inDays} días';
-  }
-
   @override
   Widget build(BuildContext context) {
     return ListTile(
@@ -492,33 +508,33 @@ class _MemberListItem extends StatelessWidget {
             ),
         ],
       ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: role.color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: role.color),
-            ),
-            child: Text(
-              role.name.toUpperCase(),
-              style: TextStyle(
-                color: role.color,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: role.color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: role.color),
+        ),
+        child: Text(
+          role.name.toUpperCase(),
+          style: TextStyle(
+            color: role.color,
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
           ),
-          if (canEdit)
-            IconButton(
-              icon: const Icon(Icons.more_vert),
-              onPressed: onEditRole,
-            ),
-        ],
+        ),
       ),
+      onTap: canEdit ? onEditRole : null, // Solo permitir tap si puede editar
     );
+  }
+
+  String _getLastSeenText() {
+    if (lastSeen == null) return '';
+    final difference = DateTime.now().difference(lastSeen!);
+    if (difference.inMinutes < 1) return 'Hace un momento';
+    if (difference.inHours < 1) return 'Hace ${difference.inMinutes} minutos';
+    if (difference.inDays < 1) return 'Hace ${difference.inHours} horas';
+    return 'Hace ${difference.inDays} días';
   }
 }
 
