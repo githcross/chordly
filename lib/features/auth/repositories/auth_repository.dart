@@ -47,6 +47,7 @@ class AuthRepository {
       'displayName': user.displayName ?? user.email?.split('@')[0],
       'profilePicture': user.photoURL,
       'lastLogin': FieldValue.serverTimestamp(),
+      'groups': [],
     };
 
     await ref

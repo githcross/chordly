@@ -2,6 +2,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:chordly/features/groups/models/group_model.dart';
 import 'package:chordly/features/groups/services/firestore_service.dart';
+import 'package:chordly/features/auth/providers/auth_provider.dart';
 
 part 'groups_provider.g.dart';
 
@@ -14,14 +15,29 @@ FirestoreService firestoreService(FirestoreServiceRef ref) {
 class Groups extends _$Groups {
   @override
   Stream<List<GroupModel>> build() {
+    final user = ref.watch(authProvider).value;
+    if (user == null) return Stream.value([]);
+
     return ref
         .watch(firestoreServiceProvider)
-        .firestore
-        .collection('groups')
-        .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => GroupModel.fromMap(doc.id, doc.data()))
-            .toList());
+        .getUserGroupIds(user.uid)
+        .asyncMap((groupIds) {
+      if (groupIds.isEmpty) {
+        return <GroupModel>[];
+      }
+
+      // Usar snapshots() en lugar de get() para actualizaciones en tiempo real
+      return ref
+          .read(firestoreServiceProvider)
+          .firestore
+          .collection('groups')
+          .where(FieldPath.documentId, whereIn: groupIds)
+          .snapshots()
+          .map((snapshot) => snapshot.docs
+              .map((doc) => GroupModel.fromMap(doc.id, doc.data()))
+              .toList())
+          .first; // Usar first para convertir Stream a Future
+    });
   }
 
   Future<void> createGroup(

@@ -5,7 +5,7 @@ import 'package:chordly/features/groups/models/group_membership.dart';
 import 'package:chordly/features/groups/services/firestore_service.dart';
 import 'package:chordly/features/groups/providers/groups_provider.dart';
 
-class GroupInfoScreen extends ConsumerWidget {
+class GroupInfoScreen extends ConsumerStatefulWidget {
   final GroupModel group;
   final GroupRole userRole;
 
@@ -15,6 +15,11 @@ class GroupInfoScreen extends ConsumerWidget {
     required this.userRole,
   });
 
+  @override
+  ConsumerState<GroupInfoScreen> createState() => _GroupInfoScreenState();
+}
+
+class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
   void _showEditOptionsDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -47,7 +52,7 @@ class GroupInfoScreen extends ConsumerWidget {
               ],
             ),
           ),
-          if (userRole == GroupRole.admin)
+          if (widget.userRole == GroupRole.admin)
             SimpleDialogOption(
               onPressed: () {
                 Navigator.pop(context);
@@ -67,7 +72,7 @@ class GroupInfoScreen extends ConsumerWidget {
   }
 
   void _showEditNameDialog(BuildContext context) {
-    final controller = TextEditingController(text: group.name);
+    final controller = TextEditingController(text: widget.group.name);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -128,13 +133,22 @@ class GroupInfoScreen extends ConsumerWidget {
     );
   }
 
+  void _showInviteDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => _InviteDialog(
+        groupId: widget.group.id,
+      ),
+    );
+  }
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Información del Grupo'),
         actions: [
-          if (userRole == GroupRole.admin)
+          if (widget.userRole == GroupRole.admin)
             IconButton(
               icon: const Icon(Icons.edit),
               onPressed: () => _showEditOptionsDialog(context),
@@ -143,7 +157,9 @@ class GroupInfoScreen extends ConsumerWidget {
       ),
       body: SafeArea(
         child: StreamBuilder<List<GroupMembership>>(
-          stream: ref.watch(firestoreServiceProvider).getGroupMembers(group.id),
+          stream: ref
+              .watch(firestoreServiceProvider)
+              .getGroupMembers(widget.group.id),
           builder: (context, snapshot) {
             if (snapshot.hasError) {
               return Center(child: Text('Error: ${snapshot.error}'));
@@ -176,21 +192,21 @@ class GroupInfoScreen extends ConsumerWidget {
                         children: [
                           CircleAvatar(
                             radius: 50,
-                            backgroundImage: group.imageUrl != null
-                                ? NetworkImage(group.imageUrl!)
+                            backgroundImage: widget.group.imageUrl != null
+                                ? NetworkImage(widget.group.imageUrl!)
                                 : null,
-                            child: group.imageUrl == null
+                            child: widget.group.imageUrl == null
                                 ? const Icon(Icons.group, size: 50)
                                 : null,
                           ),
                           const SizedBox(height: 16),
                           Text(
-                            group.name,
+                            widget.group.name,
                             style: Theme.of(context).textTheme.headlineSmall,
                           ),
-                          if (group.description.isNotEmpty) ...[
+                          if (widget.group.description.isNotEmpty) ...[
                             const SizedBox(height: 8),
-                            Text(group.description),
+                            Text(widget.group.description),
                           ],
                         ],
                       ),
@@ -235,12 +251,10 @@ class GroupInfoScreen extends ConsumerWidget {
                                 'Miembros',
                                 style: Theme.of(context).textTheme.titleLarge,
                               ),
-                              if (userRole == GroupRole.admin)
+                              if (widget.userRole == GroupRole.admin)
                                 IconButton(
                                   icon: const Icon(Icons.person_add),
-                                  onPressed: () {
-                                    // TODO: Implementar invitación
-                                  },
+                                  onPressed: () => _showInviteDialog(context),
                                 ),
                             ],
                           ),
@@ -251,7 +265,7 @@ class GroupInfoScreen extends ConsumerWidget {
                                 email: member.email,
                                 role: GroupRole.admin,
                                 isOnline: false,
-                                canEdit: userRole == GroupRole.admin,
+                                canEdit: widget.userRole == GroupRole.admin,
                                 onEditRole: () =>
                                     _showEditRoleDialog(context, member),
                               )),
@@ -261,7 +275,7 @@ class GroupInfoScreen extends ConsumerWidget {
                                 email: member.email,
                                 role: GroupRole.member,
                                 isOnline: false,
-                                canEdit: userRole == GroupRole.admin,
+                                canEdit: widget.userRole == GroupRole.admin,
                                 onEditRole: () =>
                                     _showEditRoleDialog(context, member),
                               )),
@@ -272,7 +286,7 @@ class GroupInfoScreen extends ConsumerWidget {
                   const SizedBox(height: 16),
 
                   // Botón de eliminar/salir
-                  if (userRole == GroupRole.admin)
+                  if (widget.userRole == GroupRole.admin)
                     FilledButton.icon(
                       onPressed: () {
                         // TODO: Implementar eliminación
@@ -413,6 +427,120 @@ class _MemberListItem extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+class _InviteDialog extends ConsumerStatefulWidget {
+  final String groupId;
+
+  const _InviteDialog({required this.groupId});
+
+  @override
+  ConsumerState<_InviteDialog> createState() => _InviteDialogState();
+}
+
+class _InviteDialogState extends ConsumerState<_InviteDialog> {
+  final searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Invitar Miembro'),
+      content: SizedBox(
+        width: 400,
+        height: 400,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: searchController,
+              decoration: const InputDecoration(
+                labelText: 'Buscar por email',
+                prefixIcon: Icon(Icons.search),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 16),
+            if (searchController.text.isNotEmpty)
+              Expanded(
+                child: FutureBuilder<List<Map<String, dynamic>>>(
+                  future: ref
+                      .read(firestoreServiceProvider)
+                      .searchUsers(searchController.text),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                      return const Text('No se encontraron usuarios');
+                    }
+
+                    return ListView.builder(
+                      itemCount: snapshot.data!.length,
+                      itemBuilder: (context, index) {
+                        final user = snapshot.data![index];
+                        return ListTile(
+                          leading: CircleAvatar(
+                            backgroundImage: user['profilePicture'] != null
+                                ? NetworkImage(user['profilePicture'])
+                                : null,
+                            child: user['profilePicture'] == null
+                                ? const Icon(Icons.person)
+                                : null,
+                          ),
+                          title: Text(user['displayName'] ?? user['email']),
+                          subtitle: Text(user['email']),
+                          onTap: () async {
+                            try {
+                              await ref
+                                  .read(firestoreServiceProvider)
+                                  .inviteToGroup(
+                                    groupId: widget.groupId,
+                                    userId: user['id'],
+                                    role: GroupRole.member.name,
+                                  );
+                              if (mounted) {
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Usuario invitado con éxito'),
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Error: $e'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+      ],
     );
   }
 }

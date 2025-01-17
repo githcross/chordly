@@ -9,11 +9,13 @@ import 'package:chordly/features/groups/services/firestore_service.dart';
 class GroupListItem extends StatelessWidget {
   final GroupModel group;
   final GroupRole role;
+  final bool isLoading;
 
   const GroupListItem({
     super.key,
     required this.group,
     required this.role,
+    this.isLoading = false,
   });
 
   @override
@@ -23,24 +25,30 @@ class GroupListItem extends StatelessWidget {
         title: Row(
           children: [
             Expanded(child: Text(group.name)),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: role.color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: role.color),
-              ),
-              child: Text(
-                role.name.toUpperCase(),
-                style: TextStyle(
-                  color: role.color,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
           ],
         ),
+        trailing: isLoading
+            ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: role.color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: role.color),
+                ),
+                child: Text(
+                  role.name.toUpperCase(),
+                  style: TextStyle(
+                    color: role.color,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
         subtitle: Text(group.description),
         leading: CircleAvatar(
           backgroundImage:
@@ -203,6 +211,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           .read(firestoreServiceProvider)
                           .getUserRoleInGroup(group.id, user?.uid ?? ''),
                       builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return GroupListItem(
+                            group: group,
+                            role: GroupRole.member,
+                            isLoading: true,
+                          );
+                        }
+
                         final role = snapshot.data != null
                             ? GroupRole.values.firstWhere(
                                 (r) => r.name == snapshot.data,
@@ -213,6 +230,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         return GroupListItem(
                           group: group,
                           role: role,
+                          isLoading: false,
                         );
                       },
                     );

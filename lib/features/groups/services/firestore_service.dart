@@ -7,10 +7,21 @@ class FirestoreService {
   // Crear o actualizar usuario
   Future<void> createOrUpdateUser(
       String userId, Map<String, dynamic> userData) async {
-    await firestore
-        .collection('users')
-        .doc(userId)
-        .set(userData, SetOptions(merge: true));
+    final userRef = firestore.collection('users').doc(userId);
+
+    // Primero verificar si el usuario existe y obtener sus grupos actuales
+    final userDoc = await userRef.get();
+    if (userDoc.exists) {
+      final existingGroups = userDoc.data()?['groups'] as List<dynamic>? ?? [];
+      // Preservar los grupos existentes
+      userData = {
+        ...userData,
+        'groups': existingGroups,
+      };
+    }
+
+    // Actualizar o crear el documento
+    await userRef.set(userData, SetOptions(merge: true));
   }
 
   // Crear un nuevo grupo
@@ -31,6 +42,7 @@ class FirestoreService {
     required String role,
     bool isCreator = false,
   }) async {
+    // 1. Agregar al usuario a la subcolección memberships del grupo
     final membershipRef = firestore
         .collection('groups')
         .doc(groupId)
@@ -42,6 +54,11 @@ class FirestoreService {
       'role': role,
       'is_creator': isCreator,
       'joined_at': FieldValue.serverTimestamp(),
+    });
+
+    // 2. Actualizar la lista de grupos del usuario
+    await firestore.collection('users').doc(userId).update({
+      'groups': FieldValue.arrayUnion([groupId])
     });
   }
 
@@ -99,6 +116,48 @@ class FirestoreService {
         }
       }
       return members;
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> searchUsers(String query) async {
+    final snapshot = await firestore
+        .collection('users')
+        .where('email', isGreaterThanOrEqualTo: query)
+        .where('email', isLessThanOrEqualTo: query + '\uf8ff')
+        .get();
+
+    return snapshot.docs
+        .map((doc) => {
+              'id': doc.id,
+              'email': doc.data()['email'] ?? '',
+              'displayName': doc.data()['displayName'] ?? '',
+              'profilePicture': doc.data()['profilePicture'],
+            })
+        .toList();
+  }
+
+  Future<void> inviteToGroup({
+    required String groupId,
+    required String userId,
+    required String role,
+  }) async {
+    await addMemberToGroup(
+      groupId: groupId,
+      userId: userId,
+      role: role,
+      isCreator: false,
+    );
+  }
+
+  Stream<List<String>> getUserGroupIds(String userId) {
+    return firestore
+        .collection('users')
+        .doc(userId)
+        .snapshots()
+        .map((snapshot) {
+      if (!snapshot.exists) return <String>[];
+      final data = snapshot.data();
+      return (data?['groups'] as List<dynamic>?)?.cast<String>() ?? [];
     });
   }
 }
