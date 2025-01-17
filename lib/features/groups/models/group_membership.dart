@@ -8,6 +8,8 @@ class GroupMembership {
   final String role;
   final bool isCreator;
   final DateTime joinedAt;
+  final bool isOnline;
+  final DateTime? lastSeen;
 
   GroupMembership({
     required this.userId,
@@ -17,5 +19,7 @@ class GroupMembership {
     required this.role,
     required this.isCreator,
     required this.joinedAt,
+    required this.isOnline,
+    this.lastSeen,
   });
 }

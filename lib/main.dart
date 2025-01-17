@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chordly/config/theme/app_theme.dart';
 import 'package:chordly/firebase_options.dart';
 import 'package:chordly/features/auth/presentation/screens/auth_check_screen.dart';
+import 'package:chordly/features/auth/providers/online_status_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,6 +20,8 @@ class MyApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen<AsyncValue<void>>(onlineStatusProvider, (_, __) {});
+
     return MaterialApp(
       title: 'Chordly',
       debugShowCheckedModeBanner: false,

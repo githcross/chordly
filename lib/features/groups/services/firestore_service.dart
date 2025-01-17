@@ -113,6 +113,10 @@ class FirestoreService {
               role: data['role'] ?? 'member',
               isCreator: data['is_creator'] ?? false,
               joinedAt: (data['joined_at'] as Timestamp).toDate(),
+              isOnline: userData['isOnline'] ?? false,
+              lastSeen: userData['lastSeen'] != null
+                  ? (userData['lastSeen'] as Timestamp).toDate()
+                  : null,
             ),
           );
         }
@@ -241,5 +245,13 @@ class FirestoreService {
     });
 
     await batch.commit();
+  }
+
+  // Actualizar estado en línea del usuario
+  Future<void> updateUserOnlineStatus(String userId, bool isOnline) async {
+    await firestore.collection('users').doc(userId).update({
+      'isOnline': isOnline,
+      'lastSeen': FieldValue.serverTimestamp(),
+    });
   }
 }

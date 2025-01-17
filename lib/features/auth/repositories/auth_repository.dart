@@ -35,6 +35,14 @@ class AuthRepository {
         await _createUserDocument(userCredential.user!);
       }
 
+      // Actualizar estado online al iniciar sesión
+      if (userCredential.user != null) {
+        await ref.read(firestoreServiceProvider).updateUserOnlineStatus(
+              userCredential.user!.uid,
+              true,
+            );
+      }
+
       return userCredential;
     } catch (e) {
       throw Exception('Failed to sign in with Google: $e');
@@ -56,6 +64,15 @@ class AuthRepository {
   }
 
   Future<void> signOut() async {
+    final user = _auth.currentUser;
+    if (user != null) {
+      // Actualizar estado offline antes de cerrar sesión
+      await ref.read(firestoreServiceProvider).updateUserOnlineStatus(
+            user.uid,
+            false,
+          );
+    }
+
     await Future.wait([
       _auth.signOut(),
       _googleSignIn.signOut(),

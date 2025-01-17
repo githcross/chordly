@@ -321,7 +321,8 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
                                 name: member.displayName,
                                 email: member.email,
                                 role: GroupRole.admin,
-                                isOnline: false,
+                                isOnline: member.isOnline,
+                                lastSeen: member.lastSeen,
                                 canEdit: widget.userRole == GroupRole.admin,
                                 onEditRole: () =>
                                     _showEditRoleDialog(context, member),
@@ -330,8 +331,12 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
                           ...regularMembers.map((member) => _MemberListItem(
                                 name: member.displayName,
                                 email: member.email,
-                                role: GroupRole.member,
-                                isOnline: false,
+                                role: GroupRole.values.firstWhere(
+                                  (r) => r.name == member.role,
+                                  orElse: () => GroupRole.member,
+                                ),
+                                isOnline: member.isOnline,
+                                lastSeen: member.lastSeen,
                                 canEdit: widget.userRole == GroupRole.admin,
                                 onEditRole: () =>
                                     _showEditRoleDialog(context, member),
@@ -415,6 +420,7 @@ class _MemberListItem extends StatelessWidget {
   final String email;
   final GroupRole role;
   final bool isOnline;
+  final DateTime? lastSeen;
   final bool canEdit;
   final VoidCallback onEditRole;
 
@@ -423,9 +429,19 @@ class _MemberListItem extends StatelessWidget {
     required this.email,
     required this.role,
     required this.isOnline,
+    this.lastSeen,
     required this.canEdit,
     required this.onEditRole,
   });
+
+  String _getLastSeenText() {
+    if (lastSeen == null) return '';
+    final difference = DateTime.now().difference(lastSeen!);
+    if (difference.inMinutes < 1) return 'Hace un momento';
+    if (difference.inHours < 1) return 'Hace ${difference.inMinutes} minutos';
+    if (difference.inDays < 1) return 'Hace ${difference.inHours} horas';
+    return 'Hace ${difference.inDays} días';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -435,27 +451,36 @@ class _MemberListItem extends StatelessWidget {
           const CircleAvatar(
             child: Icon(Icons.person),
           ),
-          if (isOnline)
-            Positioned(
-              right: 0,
-              bottom: 0,
-              child: Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: Colors.green,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Theme.of(context).scaffoldBackgroundColor,
-                    width: 2,
-                  ),
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: isOnline ? Colors.green : Colors.grey,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  width: 2,
                 ),
               ),
             ),
+          ),
         ],
       ),
       title: Text(name),
-      subtitle: Text(email),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(email),
+          if (!isOnline && lastSeen != null)
+            Text(
+              _getLastSeenText(),
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+        ],
+      ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
