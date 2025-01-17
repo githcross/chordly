@@ -92,25 +92,26 @@ class HomeGroupScreen extends ConsumerWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  ListTile(
-                    leading: Icon(
-                      Icons.music_note,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    title: const Text('Agregar Canción'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => AddSongScreen(
-                            groupId: group.id,
+                  if (userRole != GroupRole.member)
+                    ListTile(
+                      leading: Icon(
+                        Icons.music_note,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      title: const Text('Agregar Canción'),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => AddSongScreen(
+                              groupId: group.id,
+                            ),
                           ),
-                        ),
-                      );
-                    },
-                  ),
-                  const Divider(),
+                        );
+                      },
+                    ),
+                  if (userRole != GroupRole.member) const Divider(),
                   ListTile(
                     leading: Icon(
                       Icons.playlist_add,

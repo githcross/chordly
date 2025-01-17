@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:intl/intl.dart';
 import 'package:chordly/features/groups/models/group_model.dart';
 import 'package:chordly/features/songs/models/song_model.dart';
 import 'package:chordly/features/songs/presentation/delegates/song_search_delegate.dart';
@@ -185,26 +187,58 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
 
   Future<void> _shareSongs() async {
     try {
-      // Obtener canciones ordenadas
       final snapshot = await FirebaseFirestore.instance
           .collection('songs')
           .where('groupId', isEqualTo: widget.group.id)
           .where('isActive', isEqualTo: true)
+          .orderBy('title')
           .get();
 
       final songs = snapshot.docs
           .map((doc) =>
               SongModel.fromMap(doc.id, doc.data() as Map<String, dynamic>))
-          .toList()
-        ..sort((a, b) => a.title.compareTo(b.title));
+          .toList();
 
-      if (!mounted) return;
+      if (songs.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No hay canciones para compartir'),
+          ),
+        );
+        return;
+      }
 
-      // Por ahora, solo mostrar un mensaje
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Función de compartir en desarrollo'),
-        ),
+      // Crear texto formateado
+      final buffer = StringBuffer();
+      buffer.writeln('LISTA DE CANCIONES');
+      buffer.writeln('Grupo: ${widget.group.name}');
+      buffer.writeln(
+          'Fecha: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}');
+      buffer.writeln('----------------------------------------');
+      buffer.writeln('');
+
+      for (final song in songs) {
+        buffer.writeln('📝 ${song.title.toUpperCase()}');
+        buffer.writeln('👤 Autor: ${song.author}');
+        buffer.writeln('🎵 Clave: ${song.baseKey}');
+        if (song.duration.isNotEmpty) {
+          buffer.writeln('⏱️ Duración: ${song.duration}');
+        }
+        if (song.tags.isNotEmpty) {
+          buffer.writeln('🏷️ Tags: ${song.tags.join(", ")}');
+        }
+        buffer.writeln('----------------------------------------');
+      }
+
+      buffer.writeln('');
+      buffer.writeln('Total de canciones: ${songs.length}');
+      buffer.writeln('');
+      buffer.writeln('Compartido desde Chordly');
+
+      await Share.share(
+        buffer.toString(),
+        subject: 'Lista de Canciones - ${widget.group.name}',
       );
     } catch (e) {
       if (!mounted) return;
