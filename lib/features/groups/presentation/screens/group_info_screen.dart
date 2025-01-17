@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chordly/features/groups/models/group_model.dart';
+import 'package:chordly/features/groups/models/group_membership.dart';
+import 'package:chordly/features/groups/services/firestore_service.dart';
+import 'package:chordly/features/groups/providers/groups_provider.dart';
 
 class GroupInfoScreen extends ConsumerWidget {
   final GroupModel group;
@@ -97,6 +100,34 @@ class GroupInfoScreen extends ConsumerWidget {
     // TODO: Implementar diálogo de gestión de roles
   }
 
+  void _showEditRoleDialog(BuildContext context, GroupMembership member) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Editar Rol'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: GroupRole.values.map((role) {
+            return RadioListTile<GroupRole>(
+              title: Text(role.name.toUpperCase()),
+              value: role,
+              groupValue: GroupRole.values.firstWhere(
+                (r) => r.name == member.role,
+                orElse: () => GroupRole.member,
+              ),
+              onChanged: (newRole) async {
+                if (newRole != null) {
+                  // TODO: Implementar cambio de rol
+                  Navigator.pop(context);
+                }
+              },
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
@@ -111,157 +142,164 @@ class GroupInfoScreen extends ConsumerWidget {
         ],
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Detalles del grupo
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      CircleAvatar(
-                        radius: 50,
-                        backgroundImage: group.imageUrl != null
-                            ? NetworkImage(group.imageUrl!) as ImageProvider
-                            : const AssetImage(
-                                'assets/images/group_placeholder.png'),
-                        child: group.imageUrl == null
-                            ? const Icon(Icons.group, size: 50)
-                            : null,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        group.name,
-                        style: Theme.of(context).textTheme.headlineSmall,
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        group.description,
-                        style: Theme.of(context).textTheme.bodyLarge,
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
+        child: StreamBuilder<List<GroupMembership>>(
+          stream: ref.watch(firestoreServiceProvider).getGroupMembers(group.id),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Center(child: Text('Error: ${snapshot.error}'));
+            }
 
-              // Estadísticas
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Estadísticas',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      const SizedBox(height: 16),
-                      _StatItem(
-                        icon: Icons.people,
-                        title: 'Miembros',
-                        value: '0', // TODO: Implementar contador real
-                      ),
-                      const Divider(),
-                      _StatItem(
-                        icon: Icons.music_note,
-                        title: 'Canciones',
-                        value: '0',
-                      ),
-                      const Divider(),
-                      _StatItem(
-                        icon: Icons.queue_music,
-                        title: 'Playlists',
-                        value: '0',
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-              // Lista de miembros
-              Card(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
+            final members = snapshot.data!;
+            final admins = members
+                .where((m) =>
+                    m.role.toLowerCase() == GroupRole.admin.name.toLowerCase())
+                .toList();
+            final regularMembers = members
+                .where((m) =>
+                    m.role.toLowerCase() != GroupRole.admin.name.toLowerCase())
+                .toList();
+
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Detalles del grupo
+                  Card(
+                    child: Padding(
                       padding: const EdgeInsets.all(16.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      child: Column(
                         children: [
-                          Text(
-                            'Miembros',
-                            style: Theme.of(context).textTheme.titleLarge,
+                          CircleAvatar(
+                            radius: 50,
+                            backgroundImage: group.imageUrl != null
+                                ? NetworkImage(group.imageUrl!)
+                                : null,
+                            child: group.imageUrl == null
+                                ? const Icon(Icons.group, size: 50)
+                                : null,
                           ),
-                          if (userRole == GroupRole.admin)
-                            IconButton(
-                              icon: const Icon(Icons.person_add),
-                              onPressed: () {
-                                // TODO: Implementar invitación de miembros
-                              },
-                            ),
+                          const SizedBox(height: 16),
+                          Text(
+                            group.name,
+                            style: Theme.of(context).textTheme.headlineSmall,
+                          ),
+                          if (group.description.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Text(group.description),
+                          ],
                         ],
                       ),
                     ),
-                    // Lista de miembros (ejemplo)
-                    _MemberListItem(
-                      name: 'Usuario Ejemplo',
-                      email: 'usuario@ejemplo.com',
-                      role: GroupRole.admin,
-                      isOnline: true,
-                      canEdit: userRole == GroupRole.admin,
-                      onEditRole: () {
-                        // TODO: Implementar edición de rol
-                      },
-                    ),
-                    const Divider(),
-                    _MemberListItem(
-                      name: 'Otro Usuario',
-                      email: 'otro@ejemplo.com',
-                      role: GroupRole.member,
-                      isOnline: false,
-                      canEdit: userRole == GroupRole.admin,
-                      onEditRole: () {
-                        // TODO: Implementar edición de rol
-                      },
-                    ),
-                  ],
-                ),
-              ),
+                  ),
+                  const SizedBox(height: 16),
 
-              // Acciones
-              if (userRole == GroupRole.admin)
-                FilledButton.icon(
-                  onPressed: () {
-                    // TODO: Implementar eliminación
-                  },
-                  icon: const Icon(Icons.delete_forever),
-                  label: const Text('Eliminar Grupo'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    padding: const EdgeInsets.all(16),
+                  // Estadísticas
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Estadísticas',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                          const SizedBox(height: 16),
+                          _StatItem(
+                            icon: Icons.people,
+                            title: 'Miembros',
+                            value: members.length.toString(),
+                          )
+                        ],
+                      ),
+                    ),
                   ),
-                )
-              else
-                OutlinedButton.icon(
-                  onPressed: () {
-                    // TODO: Implementar salida
-                  },
-                  icon: const Icon(Icons.exit_to_app),
-                  label: const Text('Abandonar Grupo'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.red,
-                    padding: const EdgeInsets.all(16),
+                  const SizedBox(height: 16),
+
+                  // Lista de miembros
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Miembros',
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                              if (userRole == GroupRole.admin)
+                                IconButton(
+                                  icon: const Icon(Icons.person_add),
+                                  onPressed: () {
+                                    // TODO: Implementar invitación
+                                  },
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          // Administradores
+                          ...admins.map((member) => _MemberListItem(
+                                name: member.displayName,
+                                email: member.email,
+                                role: GroupRole.admin,
+                                isOnline: false,
+                                canEdit: userRole == GroupRole.admin,
+                                onEditRole: () =>
+                                    _showEditRoleDialog(context, member),
+                              )),
+                          // Miembros regulares
+                          ...regularMembers.map((member) => _MemberListItem(
+                                name: member.displayName,
+                                email: member.email,
+                                role: GroupRole.member,
+                                isOnline: false,
+                                canEdit: userRole == GroupRole.admin,
+                                onEditRole: () =>
+                                    _showEditRoleDialog(context, member),
+                              )),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-            ],
-          ),
+                  const SizedBox(height: 16),
+
+                  // Botón de eliminar/salir
+                  if (userRole == GroupRole.admin)
+                    FilledButton.icon(
+                      onPressed: () {
+                        // TODO: Implementar eliminación
+                      },
+                      icon: const Icon(Icons.delete_forever),
+                      label: const Text('Eliminar Grupo'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        padding: const EdgeInsets.all(16),
+                      ),
+                    )
+                  else
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        // TODO: Implementar salida
+                      },
+                      icon: const Icon(Icons.exit_to_app),
+                      label: const Text('Abandonar Grupo'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        padding: const EdgeInsets.all(16),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
         ),
       ),
     );
