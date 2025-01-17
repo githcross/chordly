@@ -37,84 +37,8 @@ class HomeGroupScreen extends ConsumerWidget {
                 );
               },
             ),
-            if (userRole == GroupRole.admin)
-              ListTile(
-                leading: const Icon(Icons.delete_forever, color: Colors.red),
-                title: const Text('Eliminar grupo',
-                    style: TextStyle(color: Colors.red)),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showDeleteConfirmation(context);
-                },
-              )
-            else
-              ListTile(
-                leading: const Icon(Icons.exit_to_app, color: Colors.red),
-                title: const Text('Salir del grupo',
-                    style: TextStyle(color: Colors.red)),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showLeaveConfirmation(context);
-                },
-              ),
           ],
         ),
-      ),
-    );
-  }
-
-  void _showDeleteConfirmation(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Eliminar grupo'),
-        content: const Text(
-            '¿Estás seguro que deseas eliminar este grupo? Esta acción no se puede deshacer.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () {
-              // TODO: Implementar eliminación de grupo
-              Navigator.pop(context);
-              Navigator.pop(context); // Volver a la pantalla anterior
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
-            child: const Text('Eliminar'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showLeaveConfirmation(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Salir del grupo'),
-        content: const Text(
-            '¿Estás seguro que deseas salir de este grupo? Necesitarás una nueva invitación para volver a unirte.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () {
-              // TODO: Implementar salida del grupo
-              Navigator.pop(context);
-              Navigator.pop(context); // Volver a la pantalla anterior
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
-            child: const Text('Salir'),
-          ),
-        ],
       ),
     );
   }

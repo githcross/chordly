@@ -5,6 +5,7 @@ import 'package:chordly/features/groups/providers/groups_provider.dart';
 import 'package:chordly/features/groups/models/group_model.dart';
 import 'package:chordly/features/groups/presentation/screens/home_group_screen.dart';
 import 'package:chordly/features/groups/services/firestore_service.dart';
+import 'package:chordly/features/groups/providers/invitations_provider.dart';
 
 class GroupListItem extends StatelessWidget {
   final GroupModel group;
@@ -153,6 +154,84 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
+  void _showInvitationsDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => Consumer(
+        builder: (context, ref, child) {
+          final invitations = ref.watch(pendingInvitationsProvider);
+
+          return AlertDialog(
+            title: const Text('Invitaciones'),
+            content: invitations.when(
+              data: (invitations) {
+                if (invitations.isEmpty) {
+                  return const Text('No tienes invitaciones pendientes');
+                }
+
+                return SizedBox(
+                  width: double.maxFinite,
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: invitations.length,
+                    itemBuilder: (context, index) {
+                      final invitation = invitations[index];
+                      return ListTile(
+                        title: Text(invitation.groupName),
+                        subtitle: Text('De: ${invitation.fromUserName}'),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.check),
+                              color: Colors.green,
+                              onPressed: () async {
+                                await ref
+                                    .read(firestoreServiceProvider)
+                                    .respondToInvitation(
+                                      invitationId: invitation.id,
+                                      response: 'accepted',
+                                      userId: invitation.toUserId,
+                                      groupId: invitation.groupId,
+                                    );
+                              },
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close),
+                              color: Colors.red,
+                              onPressed: () async {
+                                await ref
+                                    .read(firestoreServiceProvider)
+                                    .respondToInvitation(
+                                      invitationId: invitation.id,
+                                      response: 'rejected',
+                                      userId: invitation.toUserId,
+                                      groupId: invitation.groupId,
+                                    );
+                              },
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, _) => Text('Error: $error'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cerrar'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final filteredGroups =
@@ -164,10 +243,47 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         title: const Text('Mis Grupos'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.notifications),
-            onPressed: () {
-              // TODO: Implementar notificaciones
-            },
+            icon: Stack(
+              children: [
+                const Icon(Icons.notifications),
+                Consumer(
+                  builder: (context, ref, child) {
+                    final invitations = ref.watch(pendingInvitationsProvider);
+                    return invitations.when(
+                      data: (invitations) {
+                        if (invitations.isEmpty) return const SizedBox();
+                        return Positioned(
+                          right: 0,
+                          top: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 14,
+                              minHeight: 14,
+                            ),
+                            child: Text(
+                              '${invitations.length}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 8,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        );
+                      },
+                      loading: () => const SizedBox(),
+                      error: (_, __) => const SizedBox(),
+                    );
+                  },
+                ),
+              ],
+            ),
+            onPressed: () => _showInvitationsDialog(context),
           ),
           IconButton(
             icon: const Icon(Icons.logout),

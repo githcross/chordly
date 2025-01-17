@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:chordly/features/groups/models/group_membership.dart';
+import 'package:chordly/features/groups/models/group_invitation_model.dart';
+import 'package:chordly/features/groups/models/group_model.dart';
 
 class FirestoreService {
   final firestore = FirebaseFirestore.instance;
@@ -159,5 +161,85 @@ class FirestoreService {
       final data = snapshot.data();
       return (data?['groups'] as List<dynamic>?)?.cast<String>() ?? [];
     });
+  }
+
+  // Enviar invitación
+  Future<void> sendGroupInvitation({
+    required String groupId,
+    required String groupName,
+    required String fromUserId,
+    required String fromUserName,
+    required String toUserId,
+  }) async {
+    await firestore.collection('invitations').add({
+      'group_id': groupId,
+      'group_name': groupName,
+      'from_user_id': fromUserId,
+      'from_user_name': fromUserName,
+      'to_user_id': toUserId,
+      'created_at': FieldValue.serverTimestamp(),
+      'status': 'pending',
+    });
+  }
+
+  // Obtener invitaciones pendientes
+  Stream<List<GroupInvitation>> getPendingInvitations(String userId) {
+    return firestore
+        .collection('invitations')
+        .where('to_user_id', isEqualTo: userId)
+        .where('status', isEqualTo: 'pending')
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => GroupInvitation.fromMap(doc.id, doc.data()))
+            .toList());
+  }
+
+  // Responder a invitación
+  Future<void> respondToInvitation({
+    required String invitationId,
+    required String response, // 'accepted' o 'rejected'
+    required String userId,
+    required String groupId,
+  }) async {
+    final batch = firestore.batch();
+
+    // Actualizar estado de la invitación
+    final invitationRef = firestore.collection('invitations').doc(invitationId);
+    batch.update(invitationRef, {'status': response});
+
+    // Si fue aceptada, agregar al usuario al grupo
+    if (response == 'accepted') {
+      await addMemberToGroup(
+        groupId: groupId,
+        userId: userId,
+        role: GroupRole.member.name,
+      );
+    }
+
+    await batch.commit();
+  }
+
+  // Abandonar grupo
+  Future<void> leaveGroup({
+    required String groupId,
+    required String userId,
+  }) async {
+    final batch = firestore.batch();
+
+    // 1. Eliminar al usuario de la subcolección memberships del grupo
+    final membershipRef = firestore
+        .collection('groups')
+        .doc(groupId)
+        .collection('memberships')
+        .doc(userId);
+    batch.delete(membershipRef);
+
+    // 2. Eliminar el groupId del array de grupos del usuario
+    final userRef = firestore.collection('users').doc(userId);
+    batch.update(userRef, {
+      'groups': FieldValue.arrayRemove([groupId])
+    });
+
+    await batch.commit();
   }
 }

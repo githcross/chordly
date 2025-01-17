@@ -4,6 +4,7 @@ import 'package:chordly/features/groups/models/group_model.dart';
 import 'package:chordly/features/groups/models/group_membership.dart';
 import 'package:chordly/features/groups/services/firestore_service.dart';
 import 'package:chordly/features/groups/providers/groups_provider.dart';
+import 'package:chordly/features/auth/providers/auth_provider.dart';
 
 class GroupInfoScreen extends ConsumerStatefulWidget {
   final GroupModel group;
@@ -138,6 +139,62 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
       context: context,
       builder: (context) => _InviteDialog(
         groupId: widget.group.id,
+        groupName: widget.group.name,
+      ),
+    );
+  }
+
+  void _showLeaveConfirmation(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Salir del grupo'),
+        content: const Text(
+            '¿Estás seguro que deseas salir de este grupo? Necesitarás una nueva invitación para volver a unirte.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              try {
+                final user = ref.read(authProvider).value;
+                if (user == null) return;
+
+                await ref.read(firestoreServiceProvider).leaveGroup(
+                      groupId: widget.group.id,
+                      userId: user.uid,
+                    );
+
+                if (mounted) {
+                  Navigator.pop(context); // Cerrar diálogo
+                  Navigator.of(context).popUntil(
+                      (route) => route.isFirst); // Volver a home_screen
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Has abandonado el grupo'),
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Error al abandonar el grupo: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            child: const Text('Salir'),
+          ),
+        ],
       ),
     );
   }
@@ -300,9 +357,7 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
                     )
                   else
                     OutlinedButton.icon(
-                      onPressed: () {
-                        // TODO: Implementar salida
-                      },
+                      onPressed: () => _showLeaveConfirmation(context),
                       icon: const Icon(Icons.exit_to_app),
                       label: const Text('Abandonar Grupo'),
                       style: OutlinedButton.styleFrom(
@@ -433,8 +488,12 @@ class _MemberListItem extends StatelessWidget {
 
 class _InviteDialog extends ConsumerStatefulWidget {
   final String groupId;
+  final String groupName;
 
-  const _InviteDialog({required this.groupId});
+  const _InviteDialog({
+    required this.groupId,
+    required this.groupName,
+  });
 
   @override
   ConsumerState<_InviteDialog> createState() => _InviteDialogState();
@@ -500,18 +559,24 @@ class _InviteDialogState extends ConsumerState<_InviteDialog> {
                           subtitle: Text(user['email']),
                           onTap: () async {
                             try {
+                              final currentUser = ref.read(authProvider).value;
+                              if (currentUser == null) return;
+
                               await ref
                                   .read(firestoreServiceProvider)
-                                  .inviteToGroup(
+                                  .sendGroupInvitation(
                                     groupId: widget.groupId,
-                                    userId: user['id'],
-                                    role: GroupRole.member.name,
+                                    groupName: widget.groupName,
+                                    fromUserId: currentUser.uid,
+                                    fromUserName: currentUser.displayName ??
+                                        currentUser.email!,
+                                    toUserId: user['id'],
                                   );
                               if (mounted) {
                                 Navigator.pop(context);
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   const SnackBar(
-                                    content: Text('Usuario invitado con éxito'),
+                                    content: Text('Invitación enviada'),
                                   ),
                                 );
                               }
