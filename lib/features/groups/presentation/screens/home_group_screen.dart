@@ -14,106 +14,111 @@ class HomeGroupScreen extends ConsumerWidget {
     required this.userRole,
   });
 
-  void _showOptionsMenu(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.info),
-              title: const Text('Información del grupo'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => GroupInfoScreen(
-                      group: group,
-                      userRole: userRole,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    try {
-      return Scaffold(
-        appBar: AppBar(
-          title: Row(
-            children: [
-              CircleAvatar(
-                backgroundImage: group.imageUrl != null
-                    ? NetworkImage(group.imageUrl!) as ImageProvider
-                    : const AssetImage('assets/images/group_placeholder.png'),
-                radius: 16,
-                child: group.imageUrl == null
-                    ? const Icon(Icons.group, size: 16)
-                    : null,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  group.name,
-                  style: const TextStyle(fontSize: 18),
-                  overflow: TextOverflow.ellipsis,
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(group.name),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => GroupInfoScreen(
+                    group: group,
+                    userRole: userRole,
+                  ),
                 ),
+              );
+            },
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _HorizontalCategoryCard(
+                title: 'Canciones',
+                icon: Icons.music_note,
+                count: 0, // TODO: Obtener conteo real
+                onTap: () {
+                  // TODO: Navegar a lista de canciones
+                },
+              ),
+              const SizedBox(height: 16),
+              _HorizontalCategoryCard(
+                title: 'Playlists',
+                icon: Icons.queue_music,
+                count: 0, // TODO: Obtener conteo real
+                onTap: () {
+                  // TODO: Navegar a lista de playlists
+                },
               ),
             ],
           ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.more_vert),
-              onPressed: () => _showOptionsMenu(context),
-            ),
-          ],
         ),
-        body: SafeArea(
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          showModalBottomSheet(
+            context: context,
+            builder: (context) => Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(16),
+                ),
+              ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  _HorizontalCategoryCard(
-                    title: 'Mis Canciones',
-                    icon: Icons.music_note,
-                    count: 0,
+                  ListTile(
+                    leading: Icon(
+                      Icons.music_note,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    title: const Text('Agregar Canción'),
                     onTap: () {
-                      // TODO: Navegar a lista de canciones
+                      Navigator.pop(context);
+                      // TODO: Implementar agregar canción
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Próximamente: Agregar canción'),
+                        ),
+                      );
                     },
                   ),
-                  const SizedBox(height: 16),
-                  _HorizontalCategoryCard(
-                    title: 'Mis Playlists',
-                    icon: Icons.queue_music,
-                    count: 0,
+                  const Divider(),
+                  ListTile(
+                    leading: Icon(
+                      Icons.playlist_add,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    title: const Text('Agregar Playlist'),
                     onTap: () {
-                      // TODO: Navegar a lista de playlists
+                      Navigator.pop(context);
+                      // TODO: Implementar agregar playlist
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Próximamente: Agregar playlist'),
+                        ),
+                      );
                     },
                   ),
                 ],
               ),
             ),
-          ),
-        ),
-      );
-    } catch (e, stackTrace) {
-      debugPrint('Error en HomeGroupScreen: $e\n$stackTrace');
-      return const Scaffold(
-        body: Center(
-          child: Text('Ocurrió un error al cargar la pantalla'),
-        ),
-      );
-    }
+          );
+        },
+        child: const Icon(Icons.add),
+      ),
+    );
   }
 }
 
