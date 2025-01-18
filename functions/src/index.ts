@@ -6,21 +6,19 @@ admin.initializeApp();
 export const purgeSongs = functions.pubsub
   .schedule('every 24 hours')
   .onRun(async (context) => {
-    const db = admin.firestore();
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const now = admin.firestore.Timestamp.now();
+    const threshold = new Date(now.toDate().getTime() - (7 * 24 * 60 * 60 * 1000));
 
-    const snapshot = await db
+    const snapshot = await admin.firestore()
       .collection('songs')
       .where('isActive', '==', false)
-      .where('deletedAt', '<=', sevenDaysAgo)
+      .where('deletedAt', '<', threshold)
       .get();
 
-    const batch = db.batch();
+    const batch = admin.firestore().batch();
     snapshot.docs.forEach((doc) => {
       batch.delete(doc.ref);
     });
 
     await batch.commit();
-    console.log(`Purged ${snapshot.size} songs`);
   }); 

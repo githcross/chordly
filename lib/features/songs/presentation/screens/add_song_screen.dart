@@ -5,6 +5,7 @@ import 'package:chordly/features/auth/providers/auth_provider.dart';
 import 'package:chordly/features/songs/utils/string_similarity.dart';
 import 'dart:async';
 import 'package:flutter/services.dart';
+import 'package:chordly/features/songs/presentation/widgets/lyrics_input_field.dart';
 
 class AddSongScreen extends ConsumerStatefulWidget {
   final String groupId;
@@ -419,16 +420,11 @@ class _AddSongScreenState extends ConsumerState<AddSongScreen> {
                     },
                   ),
                   const SizedBox(height: 16),
-                  TextFormField(
+                  LyricsInputField(
                     controller: _lyricsController,
-                    decoration: const InputDecoration(
-                      labelText: 'Letra *',
-                      border: OutlineInputBorder(),
-                    ),
-                    maxLines: 10,
                     validator: (value) {
                       if (value == null || value.isEmpty) {
-                        return 'La letra es obligatoria';
+                        return 'La letra es requerida';
                       }
                       return null;
                     },

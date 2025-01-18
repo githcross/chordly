@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:chordly/features/groups/models/group_model.dart';
 import 'package:chordly/features/songs/models/song_model.dart';
+import 'package:intl/intl.dart';
 
 class DeletedSongsScreen extends ConsumerStatefulWidget {
   final GroupModel group;
@@ -18,44 +18,52 @@ class DeletedSongsScreen extends ConsumerStatefulWidget {
 }
 
 class _DeletedSongsScreenState extends ConsumerState<DeletedSongsScreen> {
+  String? _lastActionSongId;
+  String? _lastActionSongTitle;
+  OverlayEntry? _overlayEntry;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Canciones Eliminadas'),
+        title: Text(
+          'Canciones Eliminadas',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+        ),
       ),
       body: Column(
         children: [
-          // Banner informativo
           Container(
             padding: const EdgeInsets.all(16),
-            color: Theme.of(context).colorScheme.errorContainer,
+            color:
+                Theme.of(context).colorScheme.errorContainer.withOpacity(0.1),
             child: Row(
               children: [
                 Icon(
                   Icons.warning_amber_rounded,
                   color: Theme.of(context).colorScheme.error,
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Las canciones se eliminarán permanentemente después de 7 días de su eliminación inicial.',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
+                    'Las canciones se eliminarán permanentemente después de 7 días',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
                   ),
                 ),
               ],
             ),
           ),
-          // Lista de canciones eliminadas
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('songs')
                   .where('groupId', isEqualTo: widget.group.id)
                   .where('isActive', isEqualTo: false)
-                  .orderBy('deletedAt', descending: true)
+                  .orderBy('title')
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
@@ -92,42 +100,18 @@ class _DeletedSongsScreenState extends ConsumerState<DeletedSongsScreen> {
                   itemCount: songs.length,
                   itemBuilder: (context, index) {
                     final song = songs[index];
-                    final deletedAt = song.deletedAt;
-                    final daysLeft = 7 -
-                        DateTime.now()
-                            .difference(deletedAt ?? DateTime.now())
-                            .inDays;
-
                     return Dismissible(
                       key: Key(song.id),
                       direction: DismissDirection.horizontal,
-                      background: Container(
-                        color: Colors.red,
-                        alignment: Alignment.centerLeft,
-                        padding: const EdgeInsets.only(left: 16),
-                        child: const Icon(
-                          Icons.delete_forever,
-                          color: Colors.white,
-                        ),
-                      ),
-                      secondaryBackground: Container(
-                        color: Colors.green,
-                        alignment: Alignment.centerRight,
-                        padding: const EdgeInsets.only(right: 16),
-                        child: const Icon(
-                          Icons.restore,
-                          color: Colors.white,
-                        ),
-                      ),
                       confirmDismiss: (direction) async {
-                        if (direction == DismissDirection.startToEnd) {
+                        if (direction == DismissDirection.endToStart) {
                           // Eliminar permanentemente
-                          return await showDialog(
+                          final confirm = await showDialog<bool>(
                             context: context,
                             builder: (context) => AlertDialog(
-                              title: const Text('Eliminar Permanentemente'),
+                              title: const Text('Eliminar permanentemente'),
                               content: Text(
-                                  '¿Está seguro de eliminar permanentemente la canción "${song.title}"?\n\nEsta acción no se puede deshacer.'),
+                                  '¿Estás seguro de eliminar permanentemente "${song.title}"?'),
                               actions: [
                                 TextButton(
                                   onPressed: () =>
@@ -137,115 +121,63 @@ class _DeletedSongsScreenState extends ConsumerState<DeletedSongsScreen> {
                                 FilledButton(
                                   onPressed: () => Navigator.pop(context, true),
                                   style: FilledButton.styleFrom(
-                                    backgroundColor:
-                                        Theme.of(context).colorScheme.error,
+                                    backgroundColor: Colors.red,
                                   ),
                                   child: const Text('Eliminar'),
                                 ),
                               ],
                             ),
                           );
+
+                          if (confirm == true) {
+                            await FirebaseFirestore.instance
+                                .collection('songs')
+                                .doc(song.id)
+                                .delete();
+                            _showActionBanner(song.title, true);
+                            return true;
+                          }
+                          return false;
                         } else {
                           // Restaurar
-                          return await showDialog(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              title: const Text('Restaurar Canción'),
-                              content: Text(
-                                  '¿Desea restaurar la canción "${song.title}"?'),
-                              actions: [
-                                TextButton(
-                                  onPressed: () =>
-                                      Navigator.pop(context, false),
-                                  child: const Text('Cancelar'),
-                                ),
-                                FilledButton(
-                                  onPressed: () => Navigator.pop(context, true),
-                                  child: const Text('Restaurar'),
-                                ),
-                              ],
-                            ),
-                          );
+                          await FirebaseFirestore.instance
+                              .collection('songs')
+                              .doc(song.id)
+                              .update({'isActive': true});
+                          _showActionBanner(song.title, false);
+                          return true;
                         }
                       },
-                      onDismissed: (direction) async {
-                        if (direction == DismissDirection.startToEnd) {
-                          await _deletePermanently(song);
-                        } else {
-                          await _restoreSong(song);
-                        }
-                      },
+                      background: Container(
+                        color: Theme.of(context).colorScheme.primary,
+                        alignment: Alignment.centerLeft,
+                        padding: const EdgeInsets.only(left: 20.0),
+                        child: const Icon(Icons.restore, color: Colors.white),
+                      ),
+                      secondaryBackground: Container(
+                        color: Colors.red,
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 20.0),
+                        child: const Icon(Icons.delete_forever,
+                            color: Colors.white),
+                      ),
                       child: ListTile(
-                        title: Text(song.title),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(song.author),
-                            Text(
-                              'Eliminada el ${DateFormat('dd/MM/yyyy').format(deletedAt ?? DateTime.now())}',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
-                                  ?.copyWith(
-                                    color: Theme.of(context).colorScheme.error,
+                        title: Text(
+                          song.title,
+                          style:
+                              Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
                                   ),
-                            ),
-                            Text(
-                              'Se eliminará permanentemente en $daysLeft días',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
-                                  ?.copyWith(
-                                    color: Theme.of(context).colorScheme.error,
-                                  ),
-                            ),
-                          ],
                         ),
-                        trailing: Wrap(
-                          spacing: 8,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.restore),
-                              onPressed: () => _restoreSong(song),
-                              tooltip: 'Restaurar canción',
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete_forever),
-                              onPressed: () async {
-                                final confirm = await showDialog<bool>(
-                                  context: context,
-                                  builder: (context) => AlertDialog(
-                                    title:
-                                        const Text('Eliminar Permanentemente'),
-                                    content: Text(
-                                        '¿Está seguro de eliminar permanentemente la canción "${song.title}"?\n\nEsta acción no se puede deshacer.'),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () =>
-                                            Navigator.pop(context, false),
-                                        child: const Text('Cancelar'),
-                                      ),
-                                      FilledButton(
-                                        onPressed: () =>
-                                            Navigator.pop(context, true),
-                                        style: FilledButton.styleFrom(
-                                          backgroundColor: Theme.of(context)
-                                              .colorScheme
-                                              .error,
-                                        ),
-                                        child: const Text('Eliminar'),
-                                      ),
-                                    ],
-                                  ),
-                                );
-
-                                if (confirm == true) {
-                                  await _deletePermanently(song);
-                                }
-                              },
-                              tooltip: 'Eliminar permanentemente',
-                            ),
-                          ],
+                        subtitle: Text(
+                          song.author ?? '',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.primary,
+                                fontWeight: FontWeight.w500,
+                              ),
                         ),
                       ),
                     );
@@ -259,51 +191,71 @@ class _DeletedSongsScreenState extends ConsumerState<DeletedSongsScreen> {
     );
   }
 
-  Future<void> _deletePermanently(SongModel song) async {
-    try {
-      await FirebaseFirestore.instance
-          .collection('songs')
-          .doc(song.id)
-          .delete();
+  void _showActionBanner(String songTitle, bool isDelete) {
+    _overlayEntry?.remove();
+    _overlayEntry = OverlayEntry(
+      builder: (context) => Positioned(
+        top: MediaQuery.of(context).padding.top + 10,
+        left: 20,
+        right: 20,
+        child: Material(
+          color: Colors.transparent,
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0.0, end: 1.0),
+            duration: const Duration(milliseconds: 300),
+            builder: (context, value, child) {
+              return Transform.scale(
+                scale: value,
+                child: child,
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceVariant,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    isDelete ? Icons.delete_forever : Icons.restore,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      isDelete
+                          ? 'Se eliminó permanentemente "$songTitle"'
+                          : 'Se restauró "$songTitle"',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
 
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Canción eliminada permanentemente'),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error al eliminar: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
+    Overlay.of(context).insert(_overlayEntry!);
+
+    Future.delayed(const Duration(seconds: 3), () {
+      _overlayEntry?.remove();
+      _overlayEntry = null;
+    });
   }
 
-  Future<void> _restoreSong(SongModel song) async {
-    try {
-      await FirebaseFirestore.instance.collection('songs').doc(song.id).update({
-        'isActive': true,
-        'deletedAt': FieldValue.delete(),
-      });
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Canción restaurada'),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error al restaurar: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
+  @override
+  void dispose() {
+    _overlayEntry?.remove();
+    super.dispose();
   }
 }

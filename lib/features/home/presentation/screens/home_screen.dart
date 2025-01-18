@@ -240,7 +240,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Mis Grupos'),
+        title: Text(
+          'Mis Grupos',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+        ),
         actions: [
           IconButton(
             icon: Stack(

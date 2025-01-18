@@ -21,7 +21,12 @@ class HomeGroupScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(group.name),
+        title: Text(
+          group.name,
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.info_outline),

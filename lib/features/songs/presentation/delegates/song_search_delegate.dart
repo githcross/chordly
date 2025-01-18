@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:chordly/features/songs/models/song_model.dart';
 
-class SongSearchDelegate extends SearchDelegate<SongModel?> {
+class SongSearchDelegate extends SearchDelegate<String> {
   final String groupId;
 
   SongSearchDelegate({required this.groupId});
@@ -21,13 +21,69 @@ class SongSearchDelegate extends SearchDelegate<SongModel?> {
   Widget buildLeading(BuildContext context) {
     return IconButton(
       icon: const Icon(Icons.arrow_back),
-      onPressed: () => close(context, null),
+      onPressed: () => close(context, ''),
     );
   }
 
   @override
   Widget buildResults(BuildContext context) {
-    return _buildSearchResults();
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('songs')
+          .where('groupId', isEqualTo: groupId)
+          .where('isActive', isEqualTo: true)
+          .orderBy('title')
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(child: Text('Error: ${snapshot.error}'));
+        }
+
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final songs = snapshot.data!.docs
+            .map((doc) =>
+                SongModel.fromMap(doc.id, doc.data() as Map<String, dynamic>))
+            .where((song) =>
+                song.title.toLowerCase().contains(query.toLowerCase()) ||
+                (song.author?.toLowerCase() ?? '')
+                    .contains(query.toLowerCase()))
+            .toList();
+
+        if (songs.isEmpty) {
+          return const Center(
+            child: Text('No se encontraron canciones'),
+          );
+        }
+
+        return ListView.builder(
+          itemCount: songs.length,
+          itemBuilder: (context, index) {
+            final song = songs[index];
+            return ListTile(
+              title: Text(
+                song.title,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              subtitle: Text(
+                song.author ?? '',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w500,
+                    ),
+              ),
+              onTap: () {
+                Navigator.pushNamed(context, '/song/${song.id}');
+              },
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -111,7 +167,7 @@ class SongSearchDelegate extends SearchDelegate<SongModel?> {
               ),
               onTap: () {
                 // TODO: Navegar a la vista detallada de la canción
-                close(context, song);
+                close(context, song.id);
               },
             );
           },
