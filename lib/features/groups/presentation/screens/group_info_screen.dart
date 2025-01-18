@@ -6,6 +6,12 @@ import 'package:chordly/features/groups/services/firestore_service.dart';
 import 'package:chordly/features/groups/providers/groups_provider.dart';
 import 'package:chordly/features/auth/providers/auth_provider.dart';
 import 'package:chordly/features/groups/providers/group_members_provider.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:io';
+import 'dart:convert';
+import 'package:chordly/core/services/cloudinary_service.dart';
 
 class GroupInfoScreen extends ConsumerStatefulWidget {
   final GroupModel group;
@@ -44,7 +50,7 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
           SimpleDialogOption(
             onPressed: () {
               Navigator.pop(context);
-              _showEditNameDialog(context);
+              _showEditNameDialog(context, widget.group);
             },
             child: const Row(
               children: [
@@ -73,8 +79,8 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
     );
   }
 
-  void _showEditNameDialog(BuildContext context) {
-    final controller = TextEditingController(text: widget.group.name);
+  void _showEditNameDialog(BuildContext context, GroupModel currentGroup) {
+    final controller = TextEditingController(text: currentGroup.name);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -92,9 +98,23 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
             child: const Text('Cancelar'),
           ),
           FilledButton(
-            onPressed: () {
-              // TODO: Implementar cambio de nombre
-              Navigator.pop(context);
+            onPressed: () async {
+              if (controller.text.trim().isEmpty) return;
+              try {
+                await FirebaseFirestore.instance
+                    .collection('groups')
+                    .doc(currentGroup.id)
+                    .update({'name': controller.text.trim()});
+                if (!mounted) return;
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Nombre actualizado')),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error al actualizar: $e')),
+                );
+              }
             },
             child: const Text('Guardar'),
           ),
@@ -225,187 +245,626 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
     );
   }
 
+  void _showImageOptionsDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Imagen del grupo'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Elegir de la galería'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickAndUploadImage(ImageSource.gallery);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Tomar foto'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickAndUploadImage(ImageSource.camera);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickAndUploadImage(ImageSource source) async {
+    try {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(
+        source: source,
+        maxWidth: 600,
+        maxHeight: 600,
+        imageQuality: 85,
+      );
+
+      if (pickedFile == null) return;
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Subiendo imagen...')),
+      );
+
+      // Subir a Cloudinary
+      final imageUrl = await CloudinaryService.uploadImage(
+        File(pickedFile.path),
+        'group_images',
+      );
+
+      // Actualizar URL en Firestore
+      await FirebaseFirestore.instance
+          .collection('groups')
+          .doc(widget.group.id)
+          .update({
+        'imageUrl': imageUrl,
+        'lastUpdated': FieldValue.serverTimestamp(),
+      });
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Imagen actualizada correctamente'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      print('Error al subir imagen: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al actualizar imagen: ${e.toString()}'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  void _showFullImage(BuildContext context) {
+    if (widget.group.imageUrl == null) return;
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: Colors.black,
+          body: SafeArea(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // Imagen
+                Hero(
+                  tag: 'group-image-${widget.group.id}',
+                  child: InteractiveViewer(
+                    minScale: 0.5,
+                    maxScale: 4,
+                    child: Image.network(
+                      widget.group.imageUrl!,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+                // Botón cerrar
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showEditDescriptionDialog(
+      BuildContext context, GroupModel currentGroup) {
+    final controller = TextEditingController(text: currentGroup.description);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Editar descripción'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            labelText: 'Descripción del grupo',
+            border: OutlineInputBorder(),
+          ),
+          maxLines: 3,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              try {
+                await FirebaseFirestore.instance
+                    .collection('groups')
+                    .doc(currentGroup.id)
+                    .update({'description': controller.text.trim()});
+                if (!mounted) return;
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Descripción actualizada')),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error al actualizar: $e')),
+                );
+              }
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Información del Grupo'),
-        actions: [
-          if (widget.userRole == GroupRole.admin)
-            IconButton(
-              icon: const Icon(Icons.edit),
-              onPressed: () => _showEditOptionsDialog(context),
-            ),
-        ],
       ),
       body: SafeArea(
-        child: Consumer(
-          builder: (context, ref, child) {
-            return StreamBuilder<List<GroupMembership>>(
-              stream: ref
-                  .watch(firestoreServiceProvider)
-                  .getGroupMembers(widget.group.id),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }
+        child: StreamBuilder<DocumentSnapshot>(
+          // Escuchar cambios del grupo en tiempo real
+          stream: FirebaseFirestore.instance
+              .collection('groups')
+              .doc(widget.group.id)
+              .snapshots(),
+          builder: (context, groupSnapshot) {
+            if (groupSnapshot.hasError) {
+              return Center(child: Text('Error: ${groupSnapshot.error}'));
+            }
 
-                if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+            if (!groupSnapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-                final members = snapshot.data!;
-                final admins = members
-                    .where((m) =>
-                        m.role.toLowerCase() ==
-                        GroupRole.admin.name.toLowerCase())
-                    .toList();
-                final regularMembers = members
-                    .where((m) =>
-                        m.role.toLowerCase() !=
-                        GroupRole.admin.name.toLowerCase())
-                    .toList();
+            // Convertir el snapshot a GroupModel
+            final groupData =
+                groupSnapshot.data!.data() as Map<String, dynamic>;
+            final currentGroup = GroupModel.fromMap(widget.group.id, groupData);
 
-                return SingleChildScrollView(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Detalles del grupo
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Column(
-                            children: [
-                              CircleAvatar(
-                                radius: 50,
-                                backgroundImage: widget.group.imageUrl != null
-                                    ? NetworkImage(widget.group.imageUrl!)
-                                    : null,
-                                child: widget.group.imageUrl == null
-                                    ? const Icon(Icons.group, size: 50)
-                                    : null,
+            return Consumer(
+              builder: (context, ref, child) {
+                return StreamBuilder<List<GroupMembership>>(
+                  stream: ref
+                      .watch(firestoreServiceProvider)
+                      .getGroupMembers(currentGroup.id),
+                  builder: (context, membersSnapshot) {
+                    if (membersSnapshot.hasError) {
+                      return Center(
+                          child: Text('Error: ${membersSnapshot.error}'));
+                    }
+
+                    if (!membersSnapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    final members = membersSnapshot.data!;
+                    final admins = members
+                        .where((m) =>
+                            m.role.toLowerCase() ==
+                            GroupRole.admin.name.toLowerCase())
+                        .toList();
+                    final regularMembers = members
+                        .where((m) =>
+                            m.role.toLowerCase() !=
+                            GroupRole.admin.name.toLowerCase())
+                        .toList();
+
+                    return SingleChildScrollView(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Detalles del grupo
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                children: [
+                                  GestureDetector(
+                                    onTap: () {
+                                      if (widget.userRole == GroupRole.admin) {
+                                        showDialog(
+                                          context: context,
+                                          builder: (context) => AlertDialog(
+                                            title: const Text(
+                                                'Opciones de imagen'),
+                                            content: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                ListTile(
+                                                  leading:
+                                                      const Icon(Icons.zoom_in),
+                                                  title:
+                                                      const Text('Ver imagen'),
+                                                  onTap: () {
+                                                    Navigator.pop(context);
+                                                    _showFullImage(context);
+                                                  },
+                                                ),
+                                                ListTile(
+                                                  leading:
+                                                      const Icon(Icons.edit),
+                                                  title: const Text(
+                                                      'Cambiar imagen'),
+                                                  onTap: () {
+                                                    Navigator.pop(context);
+                                                    _showImageOptionsDialog(
+                                                        context);
+                                                  },
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        );
+                                      } else {
+                                        _showFullImage(context);
+                                      }
+                                    },
+                                    child: Stack(
+                                      children: [
+                                        Hero(
+                                          tag: 'group-image-${currentGroup.id}',
+                                          child: CircleAvatar(
+                                            radius: 50,
+                                            backgroundImage:
+                                                currentGroup.imageUrl != null
+                                                    ? NetworkImage(
+                                                        currentGroup.imageUrl!)
+                                                    : null,
+                                            child: currentGroup.imageUrl == null
+                                                ? const Icon(Icons.group,
+                                                    size: 50)
+                                                : null,
+                                          ),
+                                        ),
+                                        if (widget.userRole == GroupRole.admin)
+                                          Positioned(
+                                            right: 0,
+                                            bottom: 0,
+                                            child: Container(
+                                              padding: const EdgeInsets.all(4),
+                                              decoration: BoxDecoration(
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .surface,
+                                                shape: BoxShape.circle,
+                                                border: Border.all(
+                                                  color: Theme.of(context)
+                                                      .colorScheme
+                                                      .outline,
+                                                  width: 0.5,
+                                                ),
+                                              ),
+                                              child: Icon(
+                                                Icons.edit,
+                                                size: 16,
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .primary,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          children: [
+                                            // Nombre del grupo
+                                            InkWell(
+                                              onTap: widget.userRole ==
+                                                      GroupRole.admin
+                                                  ? () => _showEditNameDialog(
+                                                      context, currentGroup)
+                                                  : null,
+                                              child: Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                children: [
+                                                  Text(
+                                                    currentGroup.name,
+                                                    style: Theme.of(context)
+                                                        .textTheme
+                                                        .headlineSmall
+                                                        ?.copyWith(
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          letterSpacing: 0.5,
+                                                          color:
+                                                              Theme.of(context)
+                                                                  .colorScheme
+                                                                  .primary,
+                                                        ),
+                                                    textAlign: TextAlign.center,
+                                                  ),
+                                                  if (widget.userRole ==
+                                                      GroupRole.admin)
+                                                    Padding(
+                                                      padding:
+                                                          const EdgeInsets.only(
+                                                              left: 4),
+                                                      child: Icon(
+                                                        Icons.edit,
+                                                        size: 16,
+                                                        color: Theme.of(context)
+                                                            .colorScheme
+                                                            .primary
+                                                            .withOpacity(0.5),
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                            // Descripción
+                                            if (currentGroup
+                                                    .description.isNotEmpty ||
+                                                widget.userRole ==
+                                                    GroupRole.admin)
+                                              Container(
+                                                margin: const EdgeInsets.only(
+                                                    top: 8),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 16,
+                                                        vertical: 8),
+                                                decoration: BoxDecoration(
+                                                  color: Theme.of(context)
+                                                      .colorScheme
+                                                      .surfaceVariant
+                                                      .withOpacity(0.3),
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                ),
+                                                child: InkWell(
+                                                  onTap: widget.userRole ==
+                                                          GroupRole.admin
+                                                      ? () =>
+                                                          _showEditDescriptionDialog(
+                                                              context,
+                                                              currentGroup)
+                                                      : null,
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                  child: Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      Expanded(
+                                                        child: Text(
+                                                          currentGroup
+                                                                  .description
+                                                                  .isEmpty
+                                                              ? 'Sin descripción'
+                                                              : currentGroup
+                                                                  .description,
+                                                          textAlign:
+                                                              TextAlign.center,
+                                                          style:
+                                                              Theme.of(context)
+                                                                  .textTheme
+                                                                  .bodyMedium
+                                                                  ?.copyWith(
+                                                                    color: currentGroup
+                                                                            .description.isEmpty
+                                                                        ? Theme.of(context)
+                                                                            .colorScheme
+                                                                            .onSurfaceVariant
+                                                                        : Theme.of(context)
+                                                                            .colorScheme
+                                                                            .onSurface,
+                                                                    height: 1.5,
+                                                                    letterSpacing:
+                                                                        0.2,
+                                                                  ),
+                                                        ),
+                                                      ),
+                                                      if (widget.userRole ==
+                                                          GroupRole.admin)
+                                                        Padding(
+                                                          padding:
+                                                              const EdgeInsets
+                                                                  .only(
+                                                                  left: 4),
+                                                          child: Icon(
+                                                            Icons.edit,
+                                                            size: 14,
+                                                            color: Theme.of(
+                                                                    context)
+                                                                .colorScheme
+                                                                .onSurfaceVariant
+                                                                .withOpacity(
+                                                                    0.5),
+                                                          ),
+                                                        ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ),
-                              const SizedBox(height: 16),
-                              Text(
-                                widget.group.name,
-                                style:
-                                    Theme.of(context).textTheme.headlineSmall,
-                              ),
-                              if (widget.group.description.isNotEmpty) ...[
-                                const SizedBox(height: 8),
-                                Text(widget.group.description),
-                              ],
-                            ],
+                            ),
                           ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
+                          const SizedBox(height: 16),
 
-                      // Estadísticas
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Estadísticas',
-                                style: Theme.of(context).textTheme.titleLarge,
-                              ),
-                              const SizedBox(height: 16),
-                              _StatItem(
-                                icon: Icons.people,
-                                title: 'Miembros',
-                                value: members.length.toString(),
-                              )
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Lista de miembros
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
+                          // Estadísticas
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Miembros',
+                                    'Estadísticas',
                                     style:
                                         Theme.of(context).textTheme.titleLarge,
                                   ),
-                                  if (widget.userRole == GroupRole.admin)
-                                    IconButton(
-                                      icon: const Icon(Icons.person_add),
-                                      onPressed: () =>
-                                          _showInviteDialog(context),
-                                    ),
+                                  const SizedBox(height: 16),
+                                  _StatItem(
+                                    icon: Icons.people,
+                                    title: 'Miembros',
+                                    value: members.length.toString(),
+                                  )
                                 ],
                               ),
-                              const SizedBox(height: 16),
-                              // Administradores
-                              ...admins.map((member) => _MemberListItem(
-                                    name: member.displayName,
-                                    email: member.email,
-                                    role: GroupRole.admin,
-                                    isOnline: member.isOnline,
-                                    lastSeen: member.lastSeen,
-                                    canEdit: widget.userRole == GroupRole.admin,
-                                    onEditRole: () =>
-                                        _showEditRoleDialog(context, member),
-                                  )),
-                              // Miembros regulares
-                              ...regularMembers.map((member) => _MemberListItem(
-                                    name: member.displayName,
-                                    email: member.email,
-                                    role: GroupRole.values.firstWhere(
-                                      (r) => r.name == member.role,
-                                      orElse: () => GroupRole.member,
-                                    ),
-                                    isOnline: member.isOnline,
-                                    lastSeen: member.lastSeen,
-                                    canEdit: widget.userRole == GroupRole.admin,
-                                    onEditRole: () =>
-                                        _showEditRoleDialog(context, member),
-                                  )),
-                            ],
+                            ),
                           ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
+                          const SizedBox(height: 16),
 
-                      // Botón de eliminar/salir
-                      if (widget.userRole == GroupRole.admin)
-                        FilledButton.icon(
-                          onPressed: () {
-                            // TODO: Implementar eliminación
-                          },
-                          icon: const Icon(Icons.delete_forever),
-                          label: const Text('Eliminar Grupo'),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: Colors.red,
-                            padding: const EdgeInsets.all(16),
+                          // Lista de miembros
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        'Miembros',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleLarge,
+                                      ),
+                                      if (widget.userRole == GroupRole.admin)
+                                        IconButton(
+                                          icon: const Icon(Icons.person_add),
+                                          onPressed: () =>
+                                              _showInviteDialog(context),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  // Administradores
+                                  ...admins.map((member) => _MemberListItem(
+                                        name: member.displayName,
+                                        email: member.email,
+                                        role: GroupRole.admin,
+                                        isOnline: member.isOnline,
+                                        lastSeen: member.lastSeen,
+                                        canEdit:
+                                            widget.userRole == GroupRole.admin,
+                                        onEditRole: () => _showEditRoleDialog(
+                                            context, member),
+                                      )),
+                                  // Miembros regulares
+                                  ...regularMembers
+                                      .map((member) => _MemberListItem(
+                                            name: member.displayName,
+                                            email: member.email,
+                                            role: GroupRole.values.firstWhere(
+                                              (r) => r.name == member.role,
+                                              orElse: () => GroupRole.member,
+                                            ),
+                                            isOnline: member.isOnline,
+                                            lastSeen: member.lastSeen,
+                                            canEdit: widget.userRole ==
+                                                GroupRole.admin,
+                                            onEditRole: () =>
+                                                _showEditRoleDialog(
+                                                    context, member),
+                                          )),
+                                ],
+                              ),
+                            ),
                           ),
-                        )
-                      else
-                        OutlinedButton.icon(
-                          onPressed: () => _showLeaveConfirmation(context),
-                          icon: const Icon(Icons.exit_to_app),
-                          label: const Text('Abandonar Grupo'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.red,
-                            padding: const EdgeInsets.all(16),
-                          ),
-                        ),
-                    ],
-                  ),
+                          const SizedBox(height: 16),
+
+                          // Botón de eliminar/salir
+                          if (widget.userRole == GroupRole.admin)
+                            Container(
+                              margin: const EdgeInsets.symmetric(vertical: 8),
+                              child: FilledButton.icon(
+                                onPressed: () {
+                                  // TODO: Implementar eliminación
+                                },
+                                icon: const Icon(Icons.delete_forever),
+                                label: const Text(
+                                  'Eliminar Grupo',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: Theme.of(context)
+                                      .colorScheme
+                                      .errorContainer,
+                                  foregroundColor: Theme.of(context)
+                                      .colorScheme
+                                      .onErrorContainer,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 24, vertical: 16),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            )
+                          else
+                            Container(
+                              margin: const EdgeInsets.symmetric(vertical: 8),
+                              child: OutlinedButton.icon(
+                                onPressed: () =>
+                                    _showLeaveConfirmation(context),
+                                icon: const Icon(Icons.exit_to_app),
+                                label: const Text(
+                                  'Abandonar Grupo',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor:
+                                      Theme.of(context).colorScheme.error,
+                                  side: BorderSide(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .error
+                                        .withOpacity(0.5),
+                                    width: 2,
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 24, vertical: 16),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
                 );
               },
             );
