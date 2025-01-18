@@ -265,7 +265,7 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
           buffer.writeln('⏱️ Duración: ${song.duration}');
         }
         if (song.tags.isNotEmpty) {
-          buffer.writeln('��️ Tags: ${song.tags.join(", ")}');
+          buffer.writeln('🏷️ Tags: ${song.tags.join(", ")}');
         }
         buffer.writeln('----------------------------------------');
       }
@@ -301,48 +301,55 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
 
       if (!mounted) return;
 
-      await showDialog(
+      showDialog(
         context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Filtrar por Tags'),
-          content: SingleChildScrollView(
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: availableTags.map((tag) {
-                final isSelected = _selectedTags.contains(tag);
-                return FilterChip(
-                  label: Text(tag),
-                  selected: isSelected,
-                  selectedColor: Theme.of(context).colorScheme.primaryContainer,
-                  onSelected: (selected) {
-                    setState(() {
-                      if (selected) {
-                        _selectedTags.add(tag);
-                      } else {
-                        _selectedTags.remove(tag);
-                      }
-                    });
-                  },
-                );
-              }).toList(),
+        builder: (BuildContext dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('Filtrar por Tags'),
+            content: SingleChildScrollView(
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: availableTags.map((tag) {
+                  final isSelected = _selectedTags.contains(tag);
+                  return FilterChip(
+                    label: Text(tag),
+                    selected: isSelected,
+                    selectedColor:
+                        Theme.of(context).colorScheme.primaryContainer,
+                    checkmarkColor: Theme.of(context).colorScheme.primary,
+                    showCheckmark: true,
+                    onSelected: (selected) {
+                      setDialogState(() {
+                        setState(() {
+                          if (selected) {
+                            _selectedTags.add(tag);
+                          } else {
+                            _selectedTags.remove(tag);
+                          }
+                        });
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
             ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    _selectedTags.clear();
+                  });
+                  Navigator.pop(context);
+                },
+                child: const Text('Limpiar'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Aplicar'),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _selectedTags.clear();
-                });
-                Navigator.pop(context);
-              },
-              child: const Text('Limpiar'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Aplicar'),
-            ),
-          ],
         ),
       );
     } catch (e) {

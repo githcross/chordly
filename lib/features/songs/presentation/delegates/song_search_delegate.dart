@@ -155,16 +155,6 @@ class SongSearchDelegate extends SearchDelegate<String> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              trailing: Wrap(
-                spacing: 8,
-                children: song.tags
-                    .map((tag) => Chip(
-                          label: Text(tag),
-                          backgroundColor:
-                              Theme.of(context).colorScheme.primaryContainer,
-                        ))
-                    .toList(),
-              ),
               onTap: () {
                 // TODO: Navegar a la vista detallada de la canción
                 close(context, song.id);
