@@ -6,14 +6,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chordly/features/groups/providers/groups_provider.dart';
 
 class AuthRepository {
-  final FirebaseAuth _auth;
-  final GoogleSignIn _googleSignIn;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final Ref ref;
 
-  AuthRepository(this.ref)
-      : _auth = FirebaseAuth.instance,
-        _googleSignIn = GoogleSignIn();
+  AuthRepository(this.ref);
+
+  FirebaseAuth get auth => _auth;
 
   Future<UserCredential> signInWithGoogle() async {
     try {
@@ -30,7 +30,7 @@ class AuthRepository {
 
       final userCredential = await _auth.signInWithCredential(credential);
 
-      // Crear o actualizar documento del usuario en Firestore
+      // Aquí se crea o actualiza el documento del usuario
       if (userCredential.user != null) {
         await _createUserDocument(userCredential.user!);
       }
@@ -58,6 +58,7 @@ class AuthRepository {
       'groups': [],
     };
 
+    // Esta línea crea o actualiza el documento del usuario
     await ref
         .read(firestoreServiceProvider)
         .createOrUpdateUser(user.uid, userData);

@@ -11,21 +11,30 @@ class FirestoreService {
   // Crear o actualizar usuario
   Future<void> createOrUpdateUser(
       String userId, Map<String, dynamic> userData) async {
-    final userRef = firestore.collection('users').doc(userId);
+    try {
+      final userRef = firestore.collection('users').doc(userId);
 
-    // Primero verificar si el usuario existe y obtener sus grupos actuales
-    final userDoc = await userRef.get();
-    if (userDoc.exists) {
-      final existingGroups = userDoc.data()?['groups'] as List<dynamic>? ?? [];
-      // Preservar los grupos existentes
+      // Añadir campos de timestamp
       userData = {
         ...userData,
-        'groups': existingGroups,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'isOnline': true,
+        'lastSeen': FieldValue.serverTimestamp(),
       };
-    }
 
-    // Actualizar o crear el documento
-    await userRef.set(userData, SetOptions(merge: true));
+      // Crear el documento si no existe, actualizarlo si existe
+      await userRef.set(
+        userData,
+        SetOptions(merge: true),
+      );
+
+      print(
+          'Usuario creado/actualizado exitosamente: $userId'); // Para debugging
+    } catch (e) {
+      print('Error al crear/actualizar usuario: $e'); // Para debugging
+      throw Exception('Error al crear/actualizar usuario: $e');
+    }
   }
 
   // Crear un nuevo grupo
