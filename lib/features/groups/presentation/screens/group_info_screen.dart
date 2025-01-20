@@ -1051,7 +1051,10 @@ class _InviteDialogState extends ConsumerState<_InviteDialog> {
                       return const Center(child: CircularProgressIndicator());
                     }
 
-                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    if (!snapshot.hasData ||
+                        snapshot.data!.isEmpty ||
+                        snapshot.data!.any((user) =>
+                            user['id'] == ref.read(authProvider).value?.uid)) {
                       return const Text('No se encontraron usuarios');
                     }
 
