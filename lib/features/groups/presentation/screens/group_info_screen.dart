@@ -128,56 +128,58 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
   }
 
   void _showEditRoleDialog(BuildContext context, GroupMembership member) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Editar rol de ${member.displayName}'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: GroupRole.values.map((role) {
-            return ListTile(
-              title: Text(role.name.toUpperCase()),
-              leading: Icon(
-                role == GroupRole.admin
-                    ? Icons.admin_panel_settings
-                    : Icons.person,
-                color: role.color,
-              ),
-              selected: role.name == member.role,
-              onTap: () async {
-                try {
-                  await ref.read(firestoreServiceProvider).updateMemberRole(
-                        groupId: widget.group.id,
-                        userId: member.userId,
-                        newRole: role.name,
-                      );
+    if (member.userId != ref.read(authProvider).value?.uid) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Editar rol de ${member.displayName}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: GroupRole.values.map((role) {
+              return ListTile(
+                title: Text(role.name.toUpperCase()),
+                leading: Icon(
+                  role == GroupRole.admin
+                      ? Icons.admin_panel_settings
+                      : Icons.person,
+                  color: role.color,
+                ),
+                selected: role.name == member.role,
+                onTap: () async {
+                  try {
+                    await ref.read(firestoreServiceProvider).updateMemberRole(
+                          groupId: widget.group.id,
+                          userId: member.userId,
+                          newRole: role.name,
+                        );
 
-                  if (mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                            'Rol de ${member.displayName} actualizado a ${role.name.toUpperCase()}'),
-                      ),
-                    );
+                    if (mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                              'Rol de ${member.displayName} actualizado a ${role.name.toUpperCase()}'),
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Error al actualizar rol: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
                   }
-                } catch (e) {
-                  if (mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Error al actualizar rol: $e'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                  }
-                }
-              },
-            );
-          }).toList(),
+                },
+              );
+            }).toList(),
+          ),
         ),
-      ),
-    );
+      );
+    }
   }
 
   void _showInviteDialog(BuildContext context) {

@@ -32,7 +32,11 @@ class AuthRepository {
 
       // Aquí se crea o actualiza el documento del usuario
       if (userCredential.user != null) {
-        await _createUserDocument(userCredential.user!);
+        // Obtener los grupos existentes del usuario
+        final existingGroups = await _getUserGroups(userCredential.user!.uid);
+
+        // Pasar los grupos existentes a _createUserDocument
+        await _createUserDocument(userCredential.user!, existingGroups);
       }
 
       // Actualizar estado online al iniciar sesión
@@ -49,19 +53,31 @@ class AuthRepository {
     }
   }
 
-  Future<void> _createUserDocument(User user) async {
+  Future<void> _createUserDocument(User user, List<String> groups) async {
     final userData = {
       'email': user.email,
       'displayName': user.displayName ?? user.email?.split('@')[0],
       'profilePicture': user.photoURL,
       'lastLogin': FieldValue.serverTimestamp(),
-      'groups': [],
     };
 
-    // Esta línea crea o actualiza el documento del usuario
-    await ref
-        .read(firestoreServiceProvider)
-        .createOrUpdateUser(user.uid, userData);
+    // Obtener el documento del usuario
+    final userDoc =
+        await ref.read(firestoreServiceProvider).getUserById(user.uid);
+
+    if (userDoc.exists) {
+      // Si el usuario existe, actualizar el documento preservando los grupos existentes
+      await ref.read(firestoreServiceProvider).createOrUpdateUser(user.uid, {
+        ...userData,
+        'groups': groups,
+      });
+    } else {
+      // Si el usuario no existe, crear el documento con los grupos
+      await ref.read(firestoreServiceProvider).createOrUpdateUser(user.uid, {
+        ...userData,
+        'groups': groups,
+      });
+    }
   }
 
   Future<void> signOut() async {
@@ -81,4 +97,18 @@ class AuthRepository {
   }
 
   Stream<User?> get authStateChanges => _auth.authStateChanges();
+
+  // Método para obtener los grupos del usuario
+  Future<List<String>> _getUserGroups(String userId) async {
+    final userDoc =
+        await ref.read(firestoreServiceProvider).getUserById(userId);
+    if (userDoc.exists) {
+      final data = userDoc.data() as Map<String, dynamic>?;
+      if (data != null) {
+        final groups = data['groups'] as List<dynamic>? ?? [];
+        return groups.map((group) => group.toString()).toList();
+      }
+    }
+    return [];
+  }
 }

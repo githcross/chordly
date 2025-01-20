@@ -287,4 +287,8 @@ class FirestoreService {
       'role': newRole,
     });
   }
+
+  Future<DocumentSnapshot> getUserById(String userId) async {
+    return await firestore.collection('users').doc(userId).get();
+  }
 }
