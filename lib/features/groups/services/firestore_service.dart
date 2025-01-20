@@ -14,13 +14,14 @@ class FirestoreService {
     try {
       final userRef = firestore.collection('users').doc(userId);
 
-      // Añadir campos de timestamp
+      // Añadir campos de timestamp y email en minúsculas
       userData = {
         ...userData,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
         'isOnline': true,
         'lastSeen': FieldValue.serverTimestamp(),
+        'email_lowercase': (userData['email'] as String?)?.toLowerCase(),
       };
 
       // Crear el documento si no existe, actualizarlo si existe
@@ -143,13 +144,25 @@ class FirestoreService {
   }
 
   Future<List<Map<String, dynamic>>> searchUsers(String query) async {
+    // Convertir a minúsculas para búsqueda insensible a mayúsculas
+    query = query.toLowerCase().trim();
+
+    // Si la consulta está vacía, devolver lista vacía
+    if (query.isEmpty) return [];
+
     final snapshot = await firestore
         .collection('users')
-        .where('email', isGreaterThanOrEqualTo: query)
-        .where('email', isLessThanOrEqualTo: query + '\uf8ff')
+        .where('email_lowercase', isGreaterThanOrEqualTo: query)
+        .where('email_lowercase', isLessThanOrEqualTo: query + '\uf8ff')
         .get();
 
+    // Filtrado adicional para coincidencias parciales
     return snapshot.docs
+        .where((doc) {
+          final email =
+              (doc.data()['email_lowercase'] as String? ?? '').toLowerCase();
+          return email.contains(query);
+        })
         .map((doc) => {
               'id': doc.id,
               'email': doc.data()['email'] ?? '',
@@ -316,5 +329,18 @@ class FirestoreService {
 
   Future<DocumentSnapshot> getUserById(String userId) async {
     return await firestore.collection('users').doc(userId).get();
+  }
+
+  Future<void> migrateLowercaseEmails() async {
+    final usersSnapshot = await firestore.collection('users').get();
+
+    for (var doc in usersSnapshot.docs) {
+      final email = doc.data()['email'] as String?;
+      if (email != null) {
+        await doc.reference.update({
+          'email_lowercase': email.toLowerCase(),
+        });
+      }
+    }
   }
 }

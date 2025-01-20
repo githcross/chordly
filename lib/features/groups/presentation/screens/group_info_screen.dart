@@ -419,6 +419,39 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Información del Grupo'),
+        actions: [
+          if (widget.userRole == GroupRole.admin)
+            IconButton(
+              icon: const Icon(Icons.info),
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: Text('Solo para Administradores'),
+                    content: SingleChildScrollView(
+                      // Permite desplazamiento si el contenido es largo
+                      child: Text(
+                        '• Opción eliminar grupo: \n  Se habilita cuando no hay más miembros en el grupo, solo un miembro administrador.\n\n'
+                        '• Opción salir de grupo: \n  Se habilita cuando hay más de un miembro administrador.',
+                        style: TextStyle(
+                            fontSize: 16,
+                            height:
+                                1.5), // Ajuste del tamaño de texto y espaciado
+                      ),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () {
+                          Navigator.of(context).pop(); // Cierra el diálogo
+                        },
+                        child: Text('Cerrar'),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+        ],
       ),
       body: SafeArea(
         child: StreamBuilder<DocumentSnapshot>(
@@ -802,11 +835,46 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
 
                           // Botón de eliminar/salir
                           if (widget.userRole == GroupRole.admin)
+                            if (admins.length > 1)
+                              Container(
+                                margin: const EdgeInsets.symmetric(vertical: 8),
+                                child: OutlinedButton.icon(
+                                  onPressed: () =>
+                                      _showLeaveConfirmation(context),
+                                  icon: const Icon(Icons.exit_to_app),
+                                  label: const Text(
+                                    'Abandonar Grupo',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor:
+                                        Theme.of(context).colorScheme.error,
+                                    side: BorderSide(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .error
+                                          .withOpacity(0.5),
+                                      width: 2,
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 24, vertical: 16),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          if (members.length.toString() == 1)
                             Container(
                               margin: const EdgeInsets.symmetric(vertical: 8),
                               child: FilledButton.icon(
                                 onPressed: () {
                                   // TODO: Implementar eliminación
+                                  _showTopNotification(
+                                      context, 'Funcion en desarrollo');
                                 },
                                 icon: const Icon(Icons.delete_forever),
                                 label: const Text(
@@ -831,7 +899,7 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
                                 ),
                               ),
                             )
-                          else
+                          else if (widget.userRole != GroupRole.admin)
                             Container(
                               margin: const EdgeInsets.symmetric(vertical: 8),
                               child: OutlinedButton.icon(
@@ -1146,7 +1214,7 @@ class TopNotification extends StatelessWidget {
   const TopNotification({
     Key? key,
     required this.message,
-    this.backgroundColor = Colors.deepPurple,
+    this.backgroundColor = const Color.fromARGB(255, 207, 24, 24),
   }) : super(key: key);
 
   @override
