@@ -6,12 +6,14 @@ import 'package:chordly/features/songs/models/song_model.dart';
 import 'package:chordly/features/songs/presentation/widgets/lyrics_input_field.dart';
 
 class EditSongScreen extends ConsumerStatefulWidget {
-  final SongModel song;
+  final String songId;
+  final String groupId;
 
   const EditSongScreen({
-    super.key,
-    required this.song,
-  });
+    Key? key,
+    required this.songId,
+    required this.groupId,
+  }) : super(key: key);
 
   @override
   ConsumerState<EditSongScreen> createState() => _EditSongScreenState();
@@ -19,11 +21,11 @@ class EditSongScreen extends ConsumerStatefulWidget {
 
 class _EditSongScreenState extends ConsumerState<EditSongScreen> {
   final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _titleController;
-  late final TextEditingController _authorController;
-  late final TextEditingController _lyricsController;
-  late final TextEditingController _tempoController;
-  late final TextEditingController _durationController;
+  late TextEditingController _titleController;
+  late TextEditingController _authorController;
+  late TextEditingController _lyricsController;
+  late TextEditingController _tempoController;
+  late TextEditingController _durationController;
 
   List<String> _availableNotes = [];
   List<String> _availableTags = [];
@@ -32,24 +34,43 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
   late String _status;
   bool _isLoading = true;
   String? _error;
+  late Future<DocumentSnapshot> _songFuture;
+  late Map<String, dynamic> _songData;
 
   @override
   void initState() {
     super.initState();
-    _initializeControllers();
-    _loadData();
-  }
+    _songFuture = FirebaseFirestore.instance
+        .collection('songs')
+        .doc(widget.songId)
+        .get()
+        .then((snapshot) {
+      _songData = snapshot.data() as Map<String, dynamic>;
 
-  void _initializeControllers() {
-    _titleController = TextEditingController(text: widget.song.title);
-    _authorController = TextEditingController(text: widget.song.author);
-    _lyricsController = TextEditingController(text: widget.song.lyrics);
-    _tempoController =
-        TextEditingController(text: widget.song.tempo.toString());
-    _durationController = TextEditingController(text: widget.song.duration);
-    _selectedKey = widget.song.baseKey;
-    _selectedTags = List.from(widget.song.tags);
-    _status = widget.song.status;
+      setState(() {
+        _titleController = TextEditingController(text: _songData['title']);
+        _authorController = TextEditingController(text: _songData['author']);
+        _lyricsController = TextEditingController(text: _songData['lyrics']);
+        _tempoController =
+            TextEditingController(text: ((_songData['tempo'] ?? 0).toString()));
+        _durationController =
+            TextEditingController(text: _songData['duration'] ?? '');
+
+        _selectedKey = _songData['baseKey'] ?? '';
+        _selectedTags = List.from(_songData['tags'] ?? []);
+        _status = _songData['status'] ?? 'borrador';
+        _isLoading = false;
+      });
+
+      return snapshot;
+    }).catchError((error) {
+      setState(() {
+        _error = error.toString();
+        _isLoading = false;
+      });
+    });
+
+    _loadData();
   }
 
   Future<void> _loadData() async {
@@ -82,21 +103,22 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final updatedSong = widget.song.copyWith(
-        title: _titleController.text.trim(),
-        author: _authorController.text.trim(),
-        lyrics: _lyricsController.text.trim(),
-        baseKey: _selectedKey,
-        tags: _selectedTags,
-        tempo: int.tryParse(_tempoController.text) ?? 0,
-        duration: _durationController.text.trim(),
-        status: _status,
-      );
+      final updatedSongData = {
+        'title': _titleController.text.trim(),
+        'author': _authorController.text.trim(),
+        'lyrics': _lyricsController.text.trim(),
+        'baseKey': _selectedKey,
+        'tags': _selectedTags,
+        'tempo': int.tryParse(_tempoController.text) ?? 0,
+        'duration': _durationController.text.trim(),
+        'status': _status,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
 
       await FirebaseFirestore.instance
           .collection('songs')
-          .doc(widget.song.id)
-          .update(updatedSong.toMap());
+          .doc(widget.songId)
+          .update(updatedSongData);
 
       if (!mounted) return;
       Navigator.pop(context, true);

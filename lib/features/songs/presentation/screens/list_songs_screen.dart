@@ -8,6 +8,7 @@ import 'package:chordly/features/songs/models/song_model.dart';
 import 'package:chordly/features/songs/presentation/delegates/song_search_delegate.dart';
 import 'package:chordly/features/songs/presentation/screens/deleted_songs_screen.dart';
 import 'package:chordly/features/songs/providers/songs_provider.dart';
+import 'package:chordly/features/songs/presentation/screens/song_details_screen.dart';
 
 class ListSongsScreen extends ConsumerStatefulWidget {
   final GroupModel group;
@@ -210,7 +211,15 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
                               ),
                         ),
                         onTap: () {
-                          Navigator.pushNamed(context, '/song/${song.id}');
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => SongDetailsScreen(
+                                songId: song.id,
+                                groupId: widget.group.id,
+                              ),
+                            ),
+                          );
                         },
                       ),
                     );
