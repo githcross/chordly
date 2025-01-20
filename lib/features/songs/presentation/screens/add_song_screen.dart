@@ -234,10 +234,19 @@ class _AddSongScreenState extends ConsumerState<AddSongScreen> {
         'isActive': true,
       };
 
-      await FirebaseFirestore.instance.collection('songs').add(songData);
+      final songRef =
+          await FirebaseFirestore.instance.collection('songs').add(songData);
+
+      // Actualizar el campo songsCreated del usuario
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .update({
+        'songsCreated': FieldValue.arrayUnion([songRef.id]),
+      });
 
       if (mounted) {
-        Navigator.pop(context);
+        Navigator.pop(context, songRef.id);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Canción guardada exitosamente')),
         );
