@@ -192,6 +192,18 @@ class FirestoreService {
     required String fromUserName,
     required String toUserId,
   }) async {
+    // Verificar si el usuario ya es miembro del grupo
+    final memberSnapshot = await firestore
+        .collection('groups')
+        .doc(groupId)
+        .collection('memberships')
+        .doc(toUserId)
+        .get();
+
+    if (memberSnapshot.exists) {
+      throw Exception('El usuario ya es miembro de este grupo');
+    }
+
     // Verificar si ya existe una invitación pendiente
     final existingInvitations = await firestore
         .collection('invitations')
@@ -202,10 +214,10 @@ class FirestoreService {
 
     if (existingInvitations.docs.isNotEmpty) {
       throw Exception(
-          'Ya existe una invitación pendiente para este usuario en este grupo!');
+          'Ya existe una invitación pendiente para este usuario en este grupo');
     }
 
-    // Si no hay invitaciones pendientes, proceder con el envío
+    // Si no hay invitaciones pendientes y no es miembro, proceder con el envío
     await firestore.collection('invitations').add({
       'group_id': groupId,
       'group_name': groupName,

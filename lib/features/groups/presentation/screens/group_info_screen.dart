@@ -1051,10 +1051,7 @@ class _InviteDialogState extends ConsumerState<_InviteDialog> {
                       return const Center(child: CircularProgressIndicator());
                     }
 
-                    if (!snapshot.hasData ||
-                        snapshot.data!.isEmpty ||
-                        snapshot.data!.any((user) =>
-                            user['id'] == ref.read(authProvider).value?.uid)) {
+                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
                       return const Text('No se encontraron usuarios');
                     }
 
@@ -1062,42 +1059,66 @@ class _InviteDialogState extends ConsumerState<_InviteDialog> {
                       itemCount: snapshot.data!.length,
                       itemBuilder: (context, index) {
                         final user = snapshot.data![index];
-                        return ListTile(
-                          leading: CircleAvatar(
-                            backgroundImage: user['profilePicture'] != null
-                                ? NetworkImage(user['profilePicture'])
-                                : null,
-                            child: user['profilePicture'] == null
-                                ? const Icon(Icons.person)
-                                : null,
-                          ),
-                          title: Text(user['displayName'] ?? user['email']),
-                          subtitle: Text(user['email']),
-                          onTap: () async {
-                            try {
-                              final currentUser = ref.read(authProvider).value;
-                              if (currentUser == null) return;
 
-                              await ref
-                                  .read(firestoreServiceProvider)
-                                  .sendGroupInvitation(
-                                    groupId: widget.groupId,
-                                    groupName: widget.groupName,
-                                    fromUserId: currentUser.uid,
-                                    fromUserName: currentUser.displayName ??
-                                        currentUser.email!,
-                                    toUserId: user['id'],
-                                  );
-                              if (mounted) {
-                                Navigator.pop(context);
-                                _showTopNotification(
-                                    context, 'Invitación enviada');
-                              }
-                            } catch (e) {
-                              if (mounted) {
-                                _showTopNotification(context, e.toString());
-                              }
+                        // Verificación adicional de miembros del grupo
+                        return FutureBuilder<DocumentSnapshot>(
+                          future: FirebaseFirestore.instance
+                              .collection('groups')
+                              .doc(widget.groupId)
+                              .collection('memberships')
+                              .doc(user['id'])
+                              .get(),
+                          builder: (context, membershipSnapshot) {
+                            if (membershipSnapshot.connectionState ==
+                                ConnectionState.waiting) {
+                              return const SizedBox.shrink();
                             }
+
+                            // Si el usuario ya es miembro, no mostrar en la lista
+                            if (membershipSnapshot.hasData &&
+                                membershipSnapshot.data!.exists) {
+                              return const SizedBox.shrink();
+                            }
+
+                            return ListTile(
+                              leading: CircleAvatar(
+                                backgroundImage: user['profilePicture'] != null
+                                    ? NetworkImage(user['profilePicture'])
+                                    : null,
+                                child: user['profilePicture'] == null
+                                    ? const Icon(Icons.person)
+                                    : null,
+                              ),
+                              title: Text(user['displayName'] ?? user['email']),
+                              subtitle: Text(user['email']),
+                              onTap: () async {
+                                try {
+                                  final currentUser =
+                                      ref.read(authProvider).value;
+                                  if (currentUser == null) return;
+
+                                  await ref
+                                      .read(firestoreServiceProvider)
+                                      .sendGroupInvitation(
+                                        groupId: widget.groupId,
+                                        groupName: widget.groupName,
+                                        fromUserId: currentUser.uid,
+                                        fromUserName: currentUser.displayName ??
+                                            currentUser.email!,
+                                        toUserId: user['id'],
+                                      );
+                                  if (mounted) {
+                                    Navigator.pop(context);
+                                    _showTopNotification(
+                                        context, 'Invitación enviada');
+                                  }
+                                } catch (e) {
+                                  if (mounted) {
+                                    _showTopNotification(context, e.toString());
+                                  }
+                                }
+                              },
+                            );
                           },
                         );
                       },
