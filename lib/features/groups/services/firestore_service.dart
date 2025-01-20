@@ -83,18 +83,18 @@ class FirestoreService {
         .snapshots();
   }
 
-  Future<String?> getUserRoleInGroup(String groupId, String userId) async {
-    final memberDoc = await firestore
+  Stream<String?> getUserRoleInGroup(String groupId, String userId) {
+    return firestore
         .collection('groups')
         .doc(groupId)
         .collection('memberships')
         .doc(userId)
-        .get();
-
-    if (memberDoc.exists) {
-      return memberDoc.data()?['role'];
-    }
-    return null;
+        .snapshots()
+        .map((snapshot) {
+      if (!snapshot.exists) return null;
+      final data = snapshot.data() as Map<String, dynamic>?;
+      return data?['role'] as String?;
+    });
   }
 
   Stream<List<GroupMembership>> getGroupMembers(String groupId) {

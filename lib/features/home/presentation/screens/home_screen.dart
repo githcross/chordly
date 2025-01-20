@@ -6,6 +6,7 @@ import 'package:chordly/features/groups/models/group_model.dart';
 import 'package:chordly/features/groups/presentation/screens/home_group_screen.dart';
 import 'package:chordly/features/groups/services/firestore_service.dart';
 import 'package:chordly/features/groups/providers/invitations_provider.dart';
+import 'package:chordly/features/groups/models/group_invitation_model.dart';
 
 class GroupListItem extends StatelessWidget {
   final GroupModel group;
@@ -168,7 +169,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 if (invitations.isEmpty) {
                   return const Text('No tienes invitaciones pendientes');
                 }
-
                 return SizedBox(
                   width: double.maxFinite,
                   child: ListView.builder(
@@ -177,37 +177,65 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     itemBuilder: (context, index) {
                       final invitation = invitations[index];
                       return ListTile(
-                        title: Text(invitation.groupName),
-                        subtitle: Text('De: ${invitation.fromUserName}'),
+                        subtitle: Text(
+                            '${invitation.fromUserName} te invitó al grupo ${invitation.groupName}'),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             IconButton(
                               icon: const Icon(Icons.check),
-                              color: Colors.green,
                               onPressed: () async {
-                                await ref
-                                    .read(firestoreServiceProvider)
-                                    .respondToInvitation(
-                                      invitationId: invitation.id,
-                                      response: 'accepted',
-                                      userId: invitation.toUserId,
-                                      groupId: invitation.groupId,
+                                try {
+                                  final user = ref.read(authProvider).value;
+                                  if (user == null) return;
+
+                                  await ref
+                                      .read(firestoreServiceProvider)
+                                      .respondToInvitation(
+                                        invitationId: invitation.id,
+                                        response: 'accepted',
+                                        userId: user.uid,
+                                        groupId: invitation.groupId,
+                                      );
+                                  if (mounted) Navigator.pop(context);
+                                } catch (e) {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Error: $e'),
+                                        backgroundColor: Colors.red,
+                                      ),
                                     );
+                                  }
+                                }
                               },
                             ),
                             IconButton(
                               icon: const Icon(Icons.close),
-                              color: Colors.red,
                               onPressed: () async {
-                                await ref
-                                    .read(firestoreServiceProvider)
-                                    .respondToInvitation(
-                                      invitationId: invitation.id,
-                                      response: 'rejected',
-                                      userId: invitation.toUserId,
-                                      groupId: invitation.groupId,
+                                try {
+                                  final user = ref.read(authProvider).value;
+                                  if (user == null) return;
+
+                                  await ref
+                                      .read(firestoreServiceProvider)
+                                      .respondToInvitation(
+                                        invitationId: invitation.id,
+                                        response: 'rejected',
+                                        userId: user.uid,
+                                        groupId: invitation.groupId,
+                                      );
+                                  if (mounted) Navigator.pop(context);
+                                } catch (e) {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Error: $e'),
+                                        backgroundColor: Colors.red,
+                                      ),
                                     );
+                                  }
+                                }
                               },
                             ),
                           ],
@@ -232,8 +260,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
+  final userRoleProvider =
+      StreamProvider.family<String?, String>((ref, groupId) {
+    final user = ref.watch(authProvider).value;
+    if (user != null) {
+      return ref
+          .read(firestoreServiceProvider)
+          .getUserRoleInGroup(groupId, user.uid);
+    }
+    return Stream.value(null);
+  });
+
   @override
   Widget build(BuildContext context) {
+    ref.listen<AsyncValue<List<GroupInvitation>>>(
+      pendingInvitationsProvider,
+      (_, state) {
+        if (state.hasValue && state.value != null && state.value!.isNotEmpty) {
+          // Mostrar indicador de nuevas invitaciones
+        } else {
+          // Ocultar indicador de nuevas invitaciones
+        }
+      },
+    );
+
     final filteredGroups =
         ref.watch(filteredGroupsProvider(_searchController.text));
     final user = ref.watch(authProvider).value;
@@ -327,34 +377,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   itemCount: groups.length,
                   itemBuilder: (context, index) {
                     final group = groups[index];
-                    return FutureBuilder<String?>(
-                      future: ref
-                          .read(firestoreServiceProvider)
-                          .getUserRoleInGroup(group.id, user?.uid ?? ''),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return GroupListItem(
+                    return ref.watch(userRoleProvider(group.id)).when(
+                          data: (role) {
+                            return GroupListItem(
+                              group: group,
+                              role: role != null
+                                  ? GroupRole.values.firstWhere(
+                                      (r) => r.name == role,
+                                      orElse: () => GroupRole.member,
+                                    )
+                                  : GroupRole.member,
+                              isLoading: false,
+                            );
+                          },
+                          loading: () => GroupListItem(
                             group: group,
                             role: GroupRole.member,
                             isLoading: true,
-                          );
-                        }
-
-                        final role = snapshot.data != null
-                            ? GroupRole.values.firstWhere(
-                                (r) => r.name == snapshot.data,
-                                orElse: () => GroupRole.member,
-                              )
-                            : GroupRole.member;
-
-                        return GroupListItem(
-                          group: group,
-                          role: role,
-                          isLoading: false,
+                          ),
+                          error: (_, __) => GroupListItem(
+                            group: group,
+                            role: GroupRole.member,
+                            isLoading: false,
+                          ),
                         );
-                      },
-                    );
                   },
                 );
               },
