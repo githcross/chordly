@@ -192,14 +192,28 @@ class FirestoreService {
     required String fromUserName,
     required String toUserId,
   }) async {
+    // Verificar si ya existe una invitación pendiente
+    final existingInvitations = await firestore
+        .collection('invitations')
+        .where('group_id', isEqualTo: groupId)
+        .where('to_user_id', isEqualTo: toUserId)
+        .where('status', isEqualTo: 'pending')
+        .get();
+
+    if (existingInvitations.docs.isNotEmpty) {
+      throw Exception(
+          'Ya existe una invitación pendiente para este usuario en este grupo!');
+    }
+
+    // Si no hay invitaciones pendientes, proceder con el envío
     await firestore.collection('invitations').add({
       'group_id': groupId,
       'group_name': groupName,
       'from_user_id': fromUserId,
       'from_user_name': fromUserName,
       'to_user_id': toUserId,
-      'created_at': FieldValue.serverTimestamp(),
       'status': 'pending',
+      'created_at': FieldValue.serverTimestamp(),
     });
   }
 

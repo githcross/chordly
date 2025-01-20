@@ -1090,20 +1090,12 @@ class _InviteDialogState extends ConsumerState<_InviteDialog> {
                                   );
                               if (mounted) {
                                 Navigator.pop(context);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Invitación enviada'),
-                                  ),
-                                );
+                                _showTopNotification(
+                                    context, 'Invitación enviada');
                               }
                             } catch (e) {
                               if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Error: $e'),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
+                                _showTopNotification(context, e.toString());
                               }
                             }
                           },
@@ -1124,4 +1116,65 @@ class _InviteDialogState extends ConsumerState<_InviteDialog> {
       ],
     );
   }
+}
+
+class TopNotification extends StatelessWidget {
+  final String message;
+  final Color backgroundColor;
+
+  const TopNotification({
+    Key? key,
+    required this.message,
+    this.backgroundColor = Colors.deepPurple,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      top: 50, // Ajusta según sea necesario
+      left: 16,
+      right: 16,
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: BorderRadius.circular(10),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Text(
+            message,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+void _showTopNotification(BuildContext context, String message) {
+  OverlayEntry? overlayEntry;
+
+  overlayEntry = OverlayEntry(
+    builder: (context) => TopNotification(message: message),
+  );
+
+  Overlay.of(context).insert(overlayEntry);
+
+  // Desaparecer después de 3 segundos
+  Future.delayed(const Duration(seconds: 3), () {
+    overlayEntry?.remove();
+  });
 }
