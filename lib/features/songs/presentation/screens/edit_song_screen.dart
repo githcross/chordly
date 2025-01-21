@@ -366,10 +366,11 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
               ),
               const SizedBox(height: 16),
               LyricsInputField(
+                songId: widget.songId,
                 controller: _lyricsController,
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'La letra es requerida';
+                    return 'Por favor, ingresa la letra de la canción';
                   }
                   return null;
                 },

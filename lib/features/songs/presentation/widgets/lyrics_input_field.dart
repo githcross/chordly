@@ -7,6 +7,7 @@ class LyricsInputField extends StatefulWidget {
   final String? errorText;
   final ValueChanged<String>? onChanged;
   final String? Function(String?)? validator;
+  final String? songId;
 
   const LyricsInputField({
     super.key,
@@ -14,6 +15,7 @@ class LyricsInputField extends StatefulWidget {
     this.errorText,
     this.onChanged,
     this.validator,
+    this.songId,
   });
 
   @override
@@ -86,14 +88,14 @@ class _LyricsInputFieldState extends State<LyricsInputField> {
     }
   }
 
-  void _insertChord(String note) {
+  void _insertChord(String note) async {
     final text = _controller.text;
     final selection = _controller.selection;
     final selectedText = text.substring(selection.start, selection.end);
     final newText = text.replaceRange(
       selection.start,
       selection.end,
-      '{[$note]}$selectedText{/}',
+      '($note)$selectedText',
     );
 
     _controller.value = TextEditingValue(
@@ -102,6 +104,18 @@ class _LyricsInputFieldState extends State<LyricsInputField> {
         offset: selection.start + newText.length - text.length,
       ),
     );
+
+    try {
+      if (widget.songId != null) {
+        final songDoc =
+            FirebaseFirestore.instance.collection('songs').doc(widget.songId);
+        await songDoc.update({'lyrics': newText});
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al guardar la letra: $e')),
+      );
+    }
   }
 
   void _showChordDialog(BuildContext context) {

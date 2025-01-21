@@ -433,7 +433,7 @@ class _AddSongScreenState extends ConsumerState<AddSongScreen> {
                     controller: _lyricsController,
                     validator: (value) {
                       if (value == null || value.isEmpty) {
-                        return 'La letra es requerida';
+                        return 'Por favor, ingresa la letra de la canción';
                       }
                       return null;
                     },

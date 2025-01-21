@@ -235,4 +235,56 @@ class ChordService {
       throw Exception('Failed to update chord category');
     }
   }
+
+  // Mapeo de notas para transposición
+  final Map<String, List<String>> _noteSequence = {
+    'mayores': [
+      'C',
+      'C#',
+      'D',
+      'D#',
+      'E',
+      'F',
+      'F#',
+      'G',
+      'G#',
+      'A',
+      'A#',
+      'B'
+    ],
+    'menores': [
+      'Cm',
+      'C#m',
+      'Dm',
+      'D#m',
+      'Em',
+      'Fm',
+      'F#m',
+      'Gm',
+      'G#m',
+      'Am',
+      'A#m',
+      'Bm'
+    ]
+  };
+
+  String transposeUp(String chord) {
+    for (var sequence in _noteSequence.values) {
+      final index = sequence.indexOf(chord);
+      if (index != -1) {
+        return sequence[(index + 1) % sequence.length];
+      }
+    }
+    return chord;
+  }
+
+  String transposeDown(String chord) {
+    for (var sequence in _noteSequence.values) {
+      final index = sequence.indexOf(chord);
+      if (index != -1) {
+        return sequence[(index - 1 + sequence.length) % sequence.length];
+      }
+    }
+    return chord;
+  }
 }
