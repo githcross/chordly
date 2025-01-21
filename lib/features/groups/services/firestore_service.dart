@@ -304,10 +304,14 @@ class FirestoreService {
   }
 
   // Actualizar estado en línea del usuario
-  Future<void> updateUserOnlineStatus(String userId, bool isOnline) async {
+  Future<void> updateUserOnlineStatus(
+    String userId,
+    bool isOnline, {
+    DateTime? lastSeen,
+  }) async {
     await firestore.collection('users').doc(userId).update({
       'isOnline': isOnline,
-      'lastSeen': FieldValue.serverTimestamp(),
+      'lastSeen': lastSeen?.toIso8601String() ?? FieldValue.serverTimestamp(),
     });
   }
 
@@ -342,5 +346,66 @@ class FirestoreService {
         });
       }
     }
+  }
+
+  Future<void> updateUserDisplayNameInDocs(
+      String userId, String newDisplayName) async {
+    final batch = firestore.batch();
+
+    // Actualizar en la colección 'users'
+    final userDoc = firestore.collection('users').doc(userId);
+    batch.update(userDoc, {'displayName': newDisplayName});
+
+    // Actualizar en la colección 'groups'
+    final groupDocs = await firestore
+        .collection('groups')
+        .where('members', arrayContains: userId)
+        .get();
+    for (final doc in groupDocs.docs) {
+      final members = List<Map<String, dynamic>>.from(doc.get('members'));
+      final updatedMembers = members.map((member) {
+        if (member['userId'] == userId) {
+          return {
+            ...member,
+            'userName': newDisplayName,
+          };
+        }
+        return member;
+      }).toList();
+      batch.update(doc.reference, {'members': updatedMembers});
+    }
+
+    // Actualizar en la colección 'songs'
+    final songDocs = await firestore
+        .collection('songs')
+        .where('createdBy', isEqualTo: userId)
+        .get();
+    for (final doc in songDocs.docs) {
+      batch.update(doc.reference, {'creatorName': newDisplayName});
+    }
+
+    // Actualizar en subcollección 'members' de 'groups'
+    final memberDocs = await firestore
+        .collectionGroup('members')
+        .where('userId', isEqualTo: userId)
+        .get();
+    for (final doc in memberDocs.docs) {
+      batch.update(doc.reference, {'userName': newDisplayName});
+    }
+
+    await batch.commit();
+  }
+
+  Future<void> updateUserBiography(String userId, String biography) async {
+    await firestore.collection('users').doc(userId).update({
+      'biography': biography,
+    });
+  }
+
+  Future<void> updateUserProfilePicture(
+      String userId, String downloadURL) async {
+    await firestore.collection('users').doc(userId).update({
+      'profilePicture': downloadURL,
+    });
   }
 }

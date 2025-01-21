@@ -2,7 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chordly/features/auth/providers/auth_provider.dart';
-import 'package:chordly/features/groups/providers/groups_provider.dart';
+import 'package:chordly/features/groups/providers/firestore_service_provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 final appLifecycleProvider =
     StreamProvider.autoDispose<AppLifecycleState>((ref) {
@@ -17,9 +18,8 @@ final appLifecycleProvider =
     controller.close();
   });
 
-  // Estado inicial
-  controller
-      .add(WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed);
+  // Estado inicial - siempre comenzar como resumed cuando se inicia la app
+  controller.add(AppLifecycleState.resumed);
 
   return controller.stream;
 });
@@ -39,18 +39,29 @@ final onlineStatusProvider = StreamProvider.autoDispose<void>((ref) async* {
   final user = ref.watch(authProvider).value;
   if (user == null) return;
 
+  // Marcar como online inmediatamente al iniciar
+  await ref
+      .read(firestoreServiceProvider)
+      .updateUserOnlineStatus(user.uid, true);
+
   // Observar cambios en el estado de la app
   await for (final appState in ref.watch(appLifecycleProvider.stream)) {
     final isOnline = appState == AppLifecycleState.resumed;
-    await ref
-        .read(firestoreServiceProvider)
-        .updateUserOnlineStatus(user.uid, isOnline);
+
+    // Actualizar el estado online basado en el estado de la app
+    await ref.read(firestoreServiceProvider).updateUserOnlineStatus(
+          user.uid,
+          isOnline,
+          lastSeen: isOnline ? null : DateTime.now(),
+        );
   }
 
-  // Asegurar que se marque como offline al cerrar
+  // Asegurar que se marque como offline al cerrar la app o disponer el provider
   ref.onDispose(() async {
-    await ref
-        .read(firestoreServiceProvider)
-        .updateUserOnlineStatus(user.uid, false);
+    await ref.read(firestoreServiceProvider).updateUserOnlineStatus(
+          user.uid,
+          false,
+          lastSeen: DateTime.now(),
+        );
   });
 });

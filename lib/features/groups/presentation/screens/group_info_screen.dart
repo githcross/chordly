@@ -12,6 +12,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'package:chordly/core/services/cloudinary_service.dart';
+import 'package:chordly/features/profile/presentation/screens/profile_screen.dart';
 
 class GroupInfoScreen extends ConsumerStatefulWidget {
   final GroupModel group;
@@ -809,24 +810,27 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
                                             widget.userRole == GroupRole.admin,
                                         onEditRole: () => _showEditRoleDialog(
                                             context, member),
+                                        userId: member.userId,
+                                        profilePicture: member.profilePicture,
                                       )),
                                   // Miembros regulares
-                                  ...regularMembers
-                                      .map((member) => _MemberListItem(
-                                            name: member.displayName,
-                                            email: member.email,
-                                            role: GroupRole.values.firstWhere(
-                                              (r) => r.name == member.role,
-                                              orElse: () => GroupRole.member,
-                                            ),
-                                            isOnline: member.isOnline,
-                                            lastSeen: member.lastSeen,
-                                            canEdit: widget.userRole ==
-                                                GroupRole.admin,
-                                            onEditRole: () =>
-                                                _showEditRoleDialog(
-                                                    context, member),
-                                          )),
+                                  ...regularMembers.map((member) =>
+                                      _MemberListItem(
+                                        name: member.displayName,
+                                        email: member.email,
+                                        role: GroupRole.values.firstWhere(
+                                          (r) => r.name == member.role,
+                                          orElse: () => GroupRole.member,
+                                        ),
+                                        isOnline: member.isOnline,
+                                        lastSeen: member.lastSeen,
+                                        canEdit:
+                                            widget.userRole == GroupRole.admin,
+                                        onEditRole: () => _showEditRoleDialog(
+                                            context, member),
+                                        userId: member.userId,
+                                        profilePicture: member.profilePicture,
+                                      )),
                                 ],
                               ),
                             ),
@@ -980,7 +984,7 @@ class _StatItem extends StatelessWidget {
   }
 }
 
-class _MemberListItem extends StatelessWidget {
+class _MemberListItem extends ConsumerWidget {
   final String name;
   final String email;
   final GroupRole role;
@@ -988,6 +992,8 @@ class _MemberListItem extends StatelessWidget {
   final DateTime? lastSeen;
   final bool canEdit;
   final VoidCallback onEditRole;
+  final String userId;
+  final String? profilePicture;
 
   const _MemberListItem({
     required this.name,
@@ -997,15 +1003,23 @@ class _MemberListItem extends StatelessWidget {
     this.lastSeen,
     required this.canEdit,
     required this.onEditRole,
+    required this.userId,
+    this.profilePicture,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return ListTile(
       leading: Stack(
         children: [
-          const CircleAvatar(
-            child: Icon(Icons.person),
+          CircleAvatar(
+            radius: 20,
+            backgroundImage:
+                profilePicture != null ? NetworkImage(profilePicture!) : null,
+            backgroundColor: isOnline ? Colors.green : Colors.grey,
+            child: profilePicture == null
+                ? Icon(Icons.person, color: Colors.white)
+                : null,
           ),
           Positioned(
             right: 0,
@@ -1053,7 +1067,19 @@ class _MemberListItem extends StatelessWidget {
           ),
         ),
       ),
-      onTap: canEdit ? onEditRole : null, // Solo permitir tap si puede editar
+      onTap: () {
+        final currentUser = ref.read(authProvider).value;
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ProfileScreen(
+              userId: userId,
+              canEdit: currentUser?.uid == userId,
+            ),
+          ),
+        );
+      },
+      onLongPress: canEdit ? onEditRole : null,
     );
   }
 

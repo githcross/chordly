@@ -16,7 +16,11 @@ void main() async {
   // Ejecutar purga al inicio
   await SongPurgeService.purgeSongs();
 
-  runApp(const ProviderScope(child: MyApp()));
+  runApp(
+    ProviderScope(
+      child: MyApp(),
+    ),
+  );
 }
 
 class MyApp extends ConsumerWidget {

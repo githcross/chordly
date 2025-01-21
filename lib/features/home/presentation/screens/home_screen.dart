@@ -7,6 +7,8 @@ import 'package:chordly/features/groups/presentation/screens/home_group_screen.d
 import 'package:chordly/features/groups/services/firestore_service.dart';
 import 'package:chordly/features/groups/providers/invitations_provider.dart';
 import 'package:chordly/features/groups/models/group_invitation_model.dart';
+import 'package:chordly/features/profile/presentation/screens/profile_screen.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class GroupListItem extends StatelessWidget {
   final GroupModel group;
@@ -26,7 +28,17 @@ class GroupListItem extends StatelessWidget {
       child: ListTile(
         title: Row(
           children: [
-            Expanded(child: Text(group.name)),
+            Expanded(
+              child: Text(
+                group.name,
+                style: GoogleFonts.poppins(
+                  textStyle: Theme.of(context).textTheme.bodyLarge,
+                  fontWeight: FontWeight.w100,
+                  letterSpacing: 0.3,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+            ),
           ],
         ),
         trailing: isLoading
@@ -51,7 +63,14 @@ class GroupListItem extends StatelessWidget {
                   ),
                 ),
               ),
-        subtitle: Text(group.description),
+        subtitle: Text(
+          group.description,
+          style: GoogleFonts.poppins(
+            textStyle: Theme.of(context).textTheme.bodyMedium,
+            fontWeight: FontWeight.w500,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
         leading: CircleAvatar(
           backgroundImage:
               group.imageUrl != null ? NetworkImage(group.imageUrl!) : null,
@@ -87,6 +106,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkDisplayName();
+    });
+  }
+
+  void _checkDisplayName() async {
+    final user = ref.read(authProvider).value;
+    if (user != null && user.displayName == null) {
+      _showChangeDisplayNameDialog(context);
+    }
   }
 
   void _showCreateGroupDialog() {
@@ -271,6 +305,79 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return Stream.value(null);
   });
 
+  void _showProfileDialog(BuildContext context) async {
+    final user = ref.read(authProvider).value;
+    if (user == null) return;
+
+    final displayName = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Perfil de Usuario'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Nombre: ${user.displayName ?? 'Sin nombre'}'),
+            Text('Correo: ${user.email}'),
+            // Agrega más detalles del perfil aquí
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cerrar'),
+          ),
+          TextButton(
+            onPressed: () => _showChangeDisplayNameDialog(context),
+            child: const Text('Cambiar Nombre'),
+          ),
+        ],
+      ),
+    );
+
+    if (displayName != null) {
+      await user.updateDisplayName(displayName);
+    }
+  }
+
+  void _showChangeDisplayNameDialog(BuildContext context) async {
+    final controller = TextEditingController();
+
+    final displayName = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cambiar Nombre'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            labelText: 'Nuevo Nombre',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    );
+
+    if (displayName != null) {
+      final user = ref.read(authProvider).value;
+      if (user != null) {
+        await user.updateDisplayName(displayName);
+        await ref
+            .read(firestoreServiceProvider)
+            .updateUserDisplayNameInDocs(user.uid, displayName);
+      }
+      Navigator.pop(context, displayName);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen<AsyncValue<List<GroupInvitation>>>(
@@ -290,13 +397,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        centerTitle: false,
         title: Text(
-          'Mis Grupos',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+          'Chordly',
+          style: GoogleFonts.montserrat(
+            textStyle: Theme.of(context).textTheme.titleLarge,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.2,
+            color: Theme.of(context).colorScheme.primary,
+          ),
         ),
         actions: [
+          IconButton(
+            icon: CircleAvatar(
+              backgroundImage:
+                  user?.photoURL != null ? NetworkImage(user!.photoURL!) : null,
+              child: user?.photoURL == null ? const Icon(Icons.person) : null,
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ProfileScreen(
+                    userId: user!.uid,
+                    canEdit: true,
+                  ),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: Stack(
               children: [
