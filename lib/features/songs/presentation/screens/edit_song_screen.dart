@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chordly/features/songs/models/song_model.dart';
 import 'package:chordly/features/songs/presentation/widgets/lyrics_input_field.dart';
+import 'package:chordly/features/auth/providers/auth_provider.dart';
 
 class EditSongScreen extends ConsumerStatefulWidget {
   final String songId;
@@ -103,6 +104,13 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
     setState(() => _isLoading = true);
 
     try {
+      final currentUser = ref.read(authProvider).value;
+      if (currentUser == null) throw Exception('Usuario no autenticado');
+
+      // Verificar si el usuario actual no es el creador original
+      final isOriginalCreator = _songData['createdBy'] == currentUser.uid;
+
+      // Preparar datos de actualización
       final updatedSongData = {
         'title': _titleController.text.trim(),
         'author': _authorController.text.trim(),
@@ -113,12 +121,37 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
         'duration': _durationController.text.trim(),
         'status': _status,
         'updatedAt': FieldValue.serverTimestamp(),
+        'lastUpdatedBy': {
+          'userId': currentUser.uid,
+          'userName': currentUser.displayName ?? currentUser.email,
+        },
       };
 
+      // Agregar colaboradores si no es el creador original
+      if (!isOriginalCreator) {
+        updatedSongData['collaborators'] = FieldValue.arrayUnion([
+          {
+            'userId': currentUser.uid,
+            'userName': currentUser.displayName ?? currentUser.email,
+          }
+        ]);
+      }
+
+      // Actualizar la canción
       await FirebaseFirestore.instance
           .collection('songs')
           .doc(widget.songId)
           .update(updatedSongData);
+
+      // Si no es el creador original, actualizar el perfil del usuario
+      if (!isOriginalCreator) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUser.uid)
+            .update({
+          'songsCollaborated': FieldValue.arrayUnion([widget.songId]),
+        });
+      }
 
       if (!mounted) return;
       Navigator.pop(context, true);
