@@ -1186,8 +1186,6 @@ class _InviteDialogState extends ConsumerState<_InviteDialog> {
                                         groupId: widget.groupId,
                                         groupName: widget.groupName,
                                         fromUserId: currentUser.uid,
-                                        fromUserName: currentUser.displayName ??
-                                            currentUser.email!,
                                         toUserId: user['id'],
                                       );
                                   if (mounted) {

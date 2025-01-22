@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chordly/features/auth/providers/auth_provider.dart';
 import 'package:chordly/features/groups/providers/firestore_service_provider.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:chordly/features/groups/services/firestore_service.dart';
 
 final appLifecycleProvider =
     StreamProvider.autoDispose<AppLifecycleState>((ref) {
@@ -35,33 +35,33 @@ class _AppLifecycleObserver extends WidgetsBindingObserver {
   }
 }
 
-final onlineStatusProvider = StreamProvider.autoDispose<void>((ref) async* {
-  final user = ref.watch(authProvider).value;
-  if (user == null) return;
+class OnlineStatusNotifier extends StateNotifier<bool> {
+  final FirestoreService _firestoreService;
+  final String _userId;
 
-  // Marcar como online inmediatamente al iniciar
-  await ref
-      .read(firestoreServiceProvider)
-      .updateUserOnlineStatus(user.uid, true);
-
-  // Observar cambios en el estado de la app
-  await for (final appState in ref.watch(appLifecycleProvider.stream)) {
-    final isOnline = appState == AppLifecycleState.resumed;
-
-    // Actualizar el estado online basado en el estado de la app
-    await ref.read(firestoreServiceProvider).updateUserOnlineStatus(
-          user.uid,
-          isOnline,
-          lastSeen: isOnline ? null : DateTime.now(),
-        );
+  OnlineStatusNotifier(this._firestoreService, this._userId) : super(true) {
+    updateOnlineStatus(true);
   }
 
-  // Asegurar que se marque como offline al cerrar la app o disponer el provider
-  ref.onDispose(() async {
-    await ref.read(firestoreServiceProvider).updateUserOnlineStatus(
-          user.uid,
-          false,
-          lastSeen: DateTime.now(),
-        );
-  });
+  Future<void> updateOnlineStatus(bool isOnline) async {
+    state = isOnline;
+    await _firestoreService.updateUserOnlineStatus(_userId, isOnline);
+  }
+
+  @override
+  void dispose() {
+    updateOnlineStatus(false);
+    super.dispose();
+  }
+}
+
+final onlineStatusProvider =
+    StateNotifierProvider<OnlineStatusNotifier, bool>((ref) {
+  final user = ref.watch(authProvider).value;
+  if (user == null) throw Exception('Usuario no autenticado');
+
+  return OnlineStatusNotifier(
+    ref.read(firestoreServiceProvider),
+    user.uid,
+  );
 });

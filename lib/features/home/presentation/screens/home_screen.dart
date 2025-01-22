@@ -10,6 +10,7 @@ import 'package:chordly/features/groups/models/group_invitation_model.dart';
 import 'package:chordly/features/profile/presentation/screens/profile_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:chordly/core/theme/text_styles.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class GroupListItem extends StatelessWidget {
   final GroupModel group;
@@ -91,21 +92,46 @@ class HomeScreen extends ConsumerStatefulWidget {
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen>
+    with WidgetsBindingObserver {
   final _searchController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _updateOnlineStatus(true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkDisplayName();
+    });
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _updateOnlineStatus(false);
     _searchController.dispose();
     super.dispose();
   }
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkDisplayName();
-    });
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _updateOnlineStatus(true);
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _updateOnlineStatus(false);
+    }
+  }
+
+  Future<void> _updateOnlineStatus(bool isOnline) async {
+    final user = ref.read(authProvider).value;
+    if (user != null) {
+      await ref.read(firestoreServiceProvider).updateUserOnlineStatus(
+            user.uid,
+            isOnline,
+          );
+    }
   }
 
   void _checkDisplayName() async {
@@ -211,70 +237,85 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     itemCount: invitations.length,
                     itemBuilder: (context, index) {
                       final invitation = invitations[index];
-                      return ListTile(
-                        subtitle: Text(
-                            '${invitation.fromUserName} te invitó al grupo ${invitation.groupName}'),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.check),
-                              onPressed: () async {
-                                try {
-                                  final user = ref.read(authProvider).value;
-                                  if (user == null) return;
-
-                                  await ref
-                                      .read(firestoreServiceProvider)
-                                      .respondToInvitation(
-                                        invitationId: invitation.id,
-                                        response: 'accepted',
-                                        userId: user.uid,
-                                        groupId: invitation.groupId,
-                                      );
-                                  if (mounted) Navigator.pop(context);
-                                } catch (e) {
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Error: $e'),
-                                        backgroundColor: Colors.red,
-                                      ),
-                                    );
-                                  }
-                                }
-                              },
+                      return FutureBuilder<DocumentSnapshot>(
+                        future: FirebaseFirestore.instance
+                            .collection('users')
+                            .doc(invitation.fromUserId)
+                            .get(),
+                        builder: (context, snapshot) {
+                          final fromUserName = (snapshot.data?.data()
+                                  as Map<String, dynamic>?)?['displayName'] ??
+                              'Usuario desconocido';
+                          return ListTile(
+                            subtitle: Text(
+                              '$fromUserName te invitó al grupo ${invitation.groupName}',
+                              style: AppTextStyles.subtitle(context),
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.close),
-                              onPressed: () async {
-                                try {
-                                  final user = ref.read(authProvider).value;
-                                  if (user == null) return;
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.check),
+                                  onPressed: () async {
+                                    try {
+                                      final user = ref.read(authProvider).value;
+                                      if (user == null) return;
 
-                                  await ref
-                                      .read(firestoreServiceProvider)
-                                      .respondToInvitation(
-                                        invitationId: invitation.id,
-                                        response: 'rejected',
-                                        userId: user.uid,
-                                        groupId: invitation.groupId,
-                                      );
-                                  if (mounted) Navigator.pop(context);
-                                } catch (e) {
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Error: $e'),
-                                        backgroundColor: Colors.red,
-                                      ),
-                                    );
-                                  }
-                                }
-                              },
+                                      await ref
+                                          .read(firestoreServiceProvider)
+                                          .respondToInvitation(
+                                            invitationId: invitation.id,
+                                            response: 'accepted',
+                                            userId: user.uid,
+                                            groupId: invitation.groupId,
+                                          );
+                                      if (mounted) Navigator.pop(context);
+                                    } catch (e) {
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Text('Error: $e'),
+                                            backgroundColor: Colors.red,
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.close),
+                                  onPressed: () async {
+                                    try {
+                                      final user = ref.read(authProvider).value;
+                                      if (user == null) return;
+
+                                      await ref
+                                          .read(firestoreServiceProvider)
+                                          .respondToInvitation(
+                                            invitationId: invitation.id,
+                                            response: 'rejected',
+                                            userId: user.uid,
+                                            groupId: invitation.groupId,
+                                          );
+                                      if (mounted) Navigator.pop(context);
+                                    } catch (e) {
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Text('Error: $e'),
+                                            backgroundColor: Colors.red,
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
+                          );
+                        },
                       );
                     },
                   ),

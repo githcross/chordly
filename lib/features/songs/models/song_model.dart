@@ -96,6 +96,11 @@ class SongModel {
     String? groupId,
     List<String>? playlists,
   }) {
+    if (this.status == 'publicado' && status == 'borrador') {
+      throw Exception(
+          'Una canción publicada no puede volver a estado borrador');
+    }
+
     return SongModel(
       id: id ?? this.id,
       title: title ?? this.title,

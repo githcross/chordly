@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:chordly/features/songs/presentation/screens/edit_song_screen.dart';
 import 'package:chordly/features/songs/services/chord_service.dart';
+import 'package:chordly/core/theme/text_styles.dart';
 
 class SongDetailsScreen extends ConsumerStatefulWidget {
   final String songId;
@@ -20,36 +21,45 @@ class SongDetailsScreen extends ConsumerStatefulWidget {
 }
 
 class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
-  late Future<DocumentSnapshot> _songFuture;
+  late Stream<DocumentSnapshot> _songStream;
   late String _originalLyrics;
   late String _lyrics;
   final ChordService _chordService = ChordService();
+  final TransformationController _transformationController =
+      TransformationController();
+  double _scale = 1.0;
+  double _fontSize = 16.0;
+  double _landscapeFontSize = 16.0;
+  bool _isInitialized = false;
 
   @override
   void initState() {
     super.initState();
-    _loadSongData();
+    _songStream = FirebaseFirestore.instance
+        .collection('songs')
+        .doc(widget.songId)
+        .snapshots();
   }
 
-  void _loadSongData() {
-    setState(() {
-      _songFuture = FirebaseFirestore.instance
-          .collection('songs')
-          .doc(widget.songId)
-          .get()
-          .then((snapshot) {
-        final songData = snapshot.data() as Map<String, dynamic>;
-        _originalLyrics = songData['lyrics'] ?? '';
-        _lyrics = _originalLyrics;
-        return snapshot;
-      });
-    });
+  @override
+  void dispose() {
+    _transformationController.dispose();
+    super.dispose();
   }
 
-  // Método para resaltar y transponer acordes
-  Widget _buildHighlightedLyrics(BuildContext context) {
+  Widget _buildHighlightedLyrics(
+    BuildContext context, {
+    bool isLandscape = false,
+    double? fontSize,
+  }) {
+    final textColor = isLandscape
+        ? Colors.white
+        : Theme.of(context).textTheme.bodyLarge?.color;
+    final chordColor = isLandscape ? Colors.lightBlue : Colors.lightBlueAccent;
+
+    final actualFontSize = fontSize ?? _fontSize;
+
     final chordRegex = RegExp(r'\(([^)]+)\)');
-
     final parts = _lyrics.split(chordRegex);
     final chords =
         chordRegex.allMatches(_lyrics).map((m) => m.group(1)!).toList();
@@ -57,19 +67,22 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     List<TextSpan> textSpans = [];
 
     for (int i = 0; i < parts.length; i++) {
-      // Texto de la letra
       textSpans.add(TextSpan(
         text: parts[i],
-        style: Theme.of(context).textTheme.bodyLarge,
+        style: TextStyle(
+          fontSize: actualFontSize,
+          color: textColor,
+          height: 1.5,
+        ),
       ));
 
-      // Acordes resaltados
       if (i < chords.length) {
         textSpans.add(TextSpan(
           text: '(${chords[i]})',
           style: TextStyle(
-            color: Colors.lightBlueAccent,
+            color: chordColor,
             fontWeight: FontWeight.bold,
+            fontSize: actualFontSize,
           ),
         ));
       }
@@ -81,8 +94,7 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     );
   }
 
-  // Método para transponer acordes y guardar en Firestore
-  void _transposeChords(bool isHalfStepUp) async {
+  void _transposeChords(bool isHalfStepUp) {
     final chordRegex = RegExp(r'\(([^)]+)\)');
     final chords =
         chordRegex.allMatches(_lyrics).map((m) => m.group(1)!).toList();
@@ -101,188 +113,316 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
       );
     }
 
+    // Actualizar estado local inmediatamente
     setState(() {
       _lyrics = transposedLyrics;
     });
 
-    try {
-      await FirebaseFirestore.instance
-          .collection('songs')
-          .doc(widget.songId)
-          .update({'lyrics': transposedLyrics});
-    } catch (e) {
+    // Actualizar Firestore en segundo plano
+    FirebaseFirestore.instance
+        .collection('songs')
+        .doc(widget.songId)
+        .update({'lyrics': transposedLyrics}).catchError((e) {
+      if (!mounted) return;
+      setState(() {
+        _lyrics = _originalLyrics;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al guardar la transposición: $e')),
+        SnackBar(
+          content: Text('Error al guardar la transposición: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
       );
-    }
+    });
   }
 
-  // Método para restaurar acordes originales
-  void _restoreOriginalChords() async {
+  void _restoreOriginalChords() {
     setState(() {
       _lyrics = _originalLyrics;
+      _landscapeFontSize = 24.0;
     });
 
-    try {
-      await FirebaseFirestore.instance
-          .collection('songs')
-          .doc(widget.songId)
-          .update({'lyrics': _originalLyrics});
-    } catch (e) {
+    // Actualizar Firestore en segundo plano
+    FirebaseFirestore.instance
+        .collection('songs')
+        .doc(widget.songId)
+        .update({'lyrics': _originalLyrics}).catchError((e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al restaurar acordes: $e')),
+        SnackBar(
+          content: Text('Error al restaurar acordes: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
       );
-    }
+    });
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildLandscapeContent(
+      BuildContext context, Map<String, dynamic> songData) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Detalles de la Canción'),
+        backgroundColor: Colors.black,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () {
+            setState(() {
+              _fontSize = 16.0;
+            });
+            Navigator.of(context).pop();
+          },
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.arrow_upward),
+            icon: const Icon(Icons.text_increase, color: Colors.white),
+            tooltip: 'Aumentar texto',
+            onPressed: () {
+              setState(() {
+                _landscapeFontSize =
+                    (_landscapeFontSize + 2.0).clamp(16.0, 40.0);
+              });
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.text_decrease, color: Colors.white),
+            tooltip: 'Reducir texto',
+            onPressed: () {
+              setState(() {
+                _landscapeFontSize =
+                    (_landscapeFontSize - 2.0).clamp(16.0, 40.0);
+              });
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.arrow_upward, color: Colors.white),
             tooltip: 'Subir medio tono',
             onPressed: () => _transposeChords(true),
           ),
           IconButton(
-            icon: const Icon(Icons.arrow_downward),
+            icon: const Icon(Icons.arrow_downward, color: Colors.white),
             tooltip: 'Bajar medio tono',
             onPressed: () => _transposeChords(false),
           ),
           IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Restaurar acordes originales',
-            onPressed: _restoreOriginalChords,
-          ),
-          IconButton(
-            icon: const Icon(Icons.edit),
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            tooltip: 'Restaurar',
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => EditSongScreen(
-                    songId: widget.songId,
-                    groupId: widget.groupId,
-                  ),
-                ),
-              );
+              setState(() {
+                _landscapeFontSize = 24.0;
+                _lyrics = _originalLyrics;
+              });
             },
           ),
         ],
       ),
-      body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('songs')
-            .doc(widget.songId)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          }
+      body: Container(
+        color: Colors.black,
+        child: SingleChildScrollView(
+          child: Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+            child: Center(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  if (_landscapeFontSize == 16.0) {
+                    _landscapeFontSize = constraints.maxWidth * 0.03;
+                  }
+                  return _buildHighlightedLyrics(
+                    context,
+                    isLandscape: true,
+                    fontSize: _landscapeFontSize,
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+  @override
+  Widget build(BuildContext context) {
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
 
-          if (!snapshot.hasData || !snapshot.data!.exists) {
-            return const Center(child: Text('Canción no encontrada'));
-          }
+    return StreamBuilder<DocumentSnapshot>(
+      stream: _songStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-          final songData = snapshot.data!.data() as Map<String, dynamic>;
-          _lyrics = songData['lyrics'] ?? '';
+        if (!snapshot.hasData || !snapshot.data!.exists) {
+          return const Center(child: Text('Canción no encontrada'));
+        }
 
-          return SingleChildScrollView(
+        final songData = snapshot.data!.data() as Map<String, dynamic>;
+        final newLyrics = songData['lyrics'] ?? '';
+
+        // Inicializar la primera vez o actualizar cuando cambian los datos
+        if (!_isInitialized || _originalLyrics != newLyrics) {
+          _originalLyrics = newLyrics;
+          _lyrics = newLyrics;
+          _isInitialized = true;
+        }
+
+        return isLandscape
+            ? _buildLandscapeContent(context, songData)
+            : Scaffold(
+                appBar: AppBar(
+                  title: Text(
+                    'Detalles de la Canción',
+                    style: AppTextStyles.appBarTitle(context),
+                  ),
+                  actions: [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_upward),
+                      tooltip: 'Subir medio tono',
+                      onPressed: () => _transposeChords(true),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.arrow_downward),
+                      tooltip: 'Bajar medio tono',
+                      onPressed: () => _transposeChords(false),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.refresh),
+                      tooltip: 'Restaurar acordes originales',
+                      onPressed: _restoreOriginalChords,
+                    ),
+                    if (!isLandscape)
+                      IconButton(
+                        icon: const Icon(Icons.edit),
+                        onPressed: () => _navigateToEdit(context),
+                      ),
+                  ],
+                ),
+                body: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: _buildInfoPanel(context, songData),
+                ),
+              );
+      },
+    );
+  }
+
+  Widget _buildInfoPanel(BuildContext context, Map<String, dynamic> songData) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          songData['title'] ?? 'Sin título',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Icon(Icons.music_note,
+                          color: Theme.of(context).colorScheme.primary,
+                          size: 24),
+                      const SizedBox(width: 8),
+                      Text(
+                        songData['baseKey'] ?? 'No especificada',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ],
+                  ),
+                ),
+                if (songData['tempo'] != null && songData['tempo'] != 0)
+                  Row(
+                    children: [
+                      Icon(Icons.speed,
+                          color: Theme.of(context).colorScheme.primary,
+                          size: 24),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${songData['tempo']} BPM',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: _buildHighlightedLyrics(context),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 1. Nombre de la Canción
-                Text(
-                  songData['title'] ?? 'Sin título',
-                  style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                _buildInfoRow(
+                  context,
+                  Icons.person,
+                  'Autor',
+                  songData['author'] ?? 'Desconocido',
                 ),
-                const SizedBox(height: 16),
-
-                // Detalles Principales
-                Card(
-                  elevation: 2,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // 2. Base Key
-                        _buildInfoRow(context, Icons.music_note, 'Clave Base',
-                            songData['baseKey'] ?? 'No especificada'),
-                        const SizedBox(height: 8),
-
-                        // 3. Letra
-                        Text(
-                          'Letra',
-                          style:
-                              Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                        ),
-                        _buildHighlightedLyrics(context),
-                        const SizedBox(height: 8),
-
-                        // 4. Autor
-                        _buildInfoRow(context, Icons.person, 'Autor',
-                            songData['author'] ?? 'Desconocido'),
-                      ],
-                    ),
+                const SizedBox(height: 10),
+                _buildInfoRow(
+                  context,
+                  Icons.timer,
+                  'Duración',
+                  songData['duration'] ?? 'No especificada',
+                ),
+                const SizedBox(height: 10),
+                _buildInfoRow(
+                  context,
+                  Icons.person_outline,
+                  'Creado por',
+                  songData['creatorName'] ?? 'Desconocido',
+                ),
+                const SizedBox(height: 10),
+                _buildInfoRow(
+                  context,
+                  Icons.calendar_today,
+                  'Fecha creación',
+                  _formatTimestamp(songData['createdAt'] as Timestamp?),
+                ),
+                const SizedBox(height: 10),
+                _buildInfoRow(
+                  context,
+                  Icons.info_outline,
+                  'Estado',
+                  songData['status'] == 'publicado' ? 'Publicado' : 'Borrador',
+                ),
+                if (songData['collaborators'] != null &&
+                    (songData['collaborators'] as List).isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  _buildInfoRow(
+                    context,
+                    Icons.group,
+                    'Colaboradores',
+                    (songData['collaborators'] as List)
+                        .map((c) => c.toString())
+                        .join(', '),
                   ),
-                ),
-                const SizedBox(height: 16),
-
-                // Metadatos
-                Card(
-                  elevation: 2,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // 5. Creado por
-                        _buildInfoRow(
-                            context,
-                            Icons.person_outline,
-                            'Creado por',
-                            songData['creatorName'] ?? 'Desconocido'),
-                        const SizedBox(height: 8),
-
-                        // 6. Fecha de Creación
-                        _buildInfoRow(
-                            context,
-                            Icons.calendar_today,
-                            'Fecha de Creación',
-                            _formatTimestamp(songData['createdAt'])),
-                        const SizedBox(height: 8),
-
-                        // 7. Fecha de Última Actualización
-                        _buildInfoRow(
-                            context,
-                            Icons.update,
-                            'Última Actualización',
-                            _formatTimestamp(songData['updatedAt'])),
-                        const SizedBox(height: 8),
-
-                        // 8. Tags
-                        _buildTagsRow(context, songData['tags'] ?? []),
-                      ],
-                    ),
-                  ),
-                ),
+                ],
+                if (songData['tags'] != null &&
+                    (songData['tags'] as List).isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  _buildTagsRow(context, List<String>.from(songData['tags'])),
+                ],
               ],
             ),
-          );
-        },
-      ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -340,8 +480,19 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
 
   String _formatTimestamp(Timestamp? timestamp) {
     if (timestamp == null) return 'Fecha no disponible';
-
     final dateTime = timestamp.toDate();
     return DateFormat('dd/MM/yyyy HH:mm').format(dateTime);
+  }
+
+  void _navigateToEdit(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EditSongScreen(
+          songId: widget.songId,
+          groupId: widget.groupId,
+        ),
+      ),
+    );
   }
 }

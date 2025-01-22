@@ -202,7 +202,6 @@ class FirestoreService {
     required String groupId,
     required String groupName,
     required String fromUserId,
-    required String fromUserName,
     required String toUserId,
   }) async {
     // Verificar si el usuario ya es miembro del grupo
@@ -226,16 +225,14 @@ class FirestoreService {
         .get();
 
     if (existingInvitations.docs.isNotEmpty) {
-      throw Exception(
-          'Ya existe una invitación pendiente para este usuario en este grupo');
+      throw Exception('Ya existe una invitación pendiente para este usuario');
     }
 
-    // Si no hay invitaciones pendientes y no es miembro, proceder con el envío
+    // Crear la invitación
     await firestore.collection('invitations').add({
       'group_id': groupId,
       'group_name': groupName,
-      'from_user_id': fromUserId,
-      'from_user_name': fromUserName,
+      'from_user_id': fromUserId, // Solo guardamos el ID
       'to_user_id': toUserId,
       'status': 'pending',
       'created_at': FieldValue.serverTimestamp(),
@@ -304,14 +301,10 @@ class FirestoreService {
   }
 
   // Actualizar estado en línea del usuario
-  Future<void> updateUserOnlineStatus(
-    String userId,
-    bool isOnline, {
-    DateTime? lastSeen,
-  }) async {
+  Future<void> updateUserOnlineStatus(String userId, bool isOnline) async {
     await firestore.collection('users').doc(userId).update({
       'isOnline': isOnline,
-      'lastSeen': lastSeen?.toIso8601String() ?? FieldValue.serverTimestamp(),
+      'lastSeen': FieldValue.serverTimestamp(),
     });
   }
 
@@ -407,5 +400,56 @@ class FirestoreService {
     await firestore.collection('users').doc(userId).update({
       'profilePicture': downloadURL,
     });
+  }
+
+  Future<DocumentReference> createSong(
+      Map<String, dynamic> songData, String userId) async {
+    // Asegurar que los campos tengan el formato correcto
+    songData = {
+      ...songData,
+      'creatorUserId': userId, // En lugar de creatorName
+      'lastUpdatedBy': userId, // En lugar del objeto con userName
+      'collaborators': [], // Array vacío inicial
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+
+    return await firestore.collection('songs').add(songData);
+  }
+
+  Future<void> migrateSongsStructure() async {
+    final songsSnapshot = await firestore.collection('songs').get();
+    final batch = firestore.batch();
+
+    for (var doc in songsSnapshot.docs) {
+      final data = doc.data();
+      final updates = <String, dynamic>{};
+
+      // Migrar creatorName a creatorUserId
+      if (data.containsKey('creatorName')) {
+        updates['creatorUserId'] =
+            data['createdBy']; // Asumiendo que 'createdBy' ya existe
+        updates.remove('creatorName');
+      }
+
+      // Migrar lastUpdatedBy
+      if (data['lastUpdatedBy'] is Map) {
+        updates['lastUpdatedBy'] = data['lastUpdatedBy']['userId'];
+      }
+
+      // Migrar collaborators
+      if (data['collaborators'] is List) {
+        final List<String> newCollaborators = (data['collaborators'] as List)
+            .map((collab) => collab['userId'] as String)
+            .toList();
+        updates['collaborators'] = newCollaborators;
+      }
+
+      if (updates.isNotEmpty) {
+        batch.update(doc.reference, updates);
+      }
+    }
+
+    await batch.commit();
   }
 }

@@ -109,7 +109,7 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
       if (currentUser == null) throw Exception('Usuario no autenticado');
 
       // Verificar si el usuario actual no es el creador original
-      final isOriginalCreator = _songData['createdBy'] == currentUser.uid;
+      final isOriginalCreator = _songData['creatorUserId'] == currentUser.uid;
 
       // Preparar datos de actualización
       final updatedSongData = {
@@ -122,23 +122,15 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
         'duration': _durationController.text.trim(),
         'status': _status,
         'updatedAt': FieldValue.serverTimestamp(),
-        'lastUpdatedBy': {
-          'userId': currentUser.uid,
-          'userName': currentUser.displayName ?? currentUser.email,
-        },
+        'lastUpdatedBy': currentUser.uid,
       };
 
       // Agregar colaboradores si no es el creador original
       if (!isOriginalCreator) {
-        updatedSongData['collaborators'] = FieldValue.arrayUnion([
-          {
-            'userId': currentUser.uid,
-            'userName': currentUser.displayName ?? currentUser.email,
-          }
-        ]);
+        updatedSongData['collaborators'] =
+            FieldValue.arrayUnion([currentUser.uid]);
       }
 
-      // Actualizar la canción en Firestore
       await FirebaseFirestore.instance
           .collection('songs')
           .doc(widget.songId)
@@ -198,6 +190,44 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
     _tempoController.dispose();
     _durationController.dispose();
     super.dispose();
+  }
+
+  Widget _buildStatusSelector() {
+    return FutureBuilder<DocumentSnapshot>(
+      future: FirebaseFirestore.instance
+          .collection('songs')
+          .doc(widget.songId)
+          .get(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const CircularProgressIndicator();
+        }
+
+        final songData = snapshot.data!.data() as Map<String, dynamic>;
+        final currentStatus = songData['status'] as String;
+        final isPublished = currentStatus == 'publicado';
+
+        return SegmentedButton<String>(
+          segments: [
+            ButtonSegment<String>(
+              value: 'borrador',
+              label: const Text('Borrador'),
+              enabled: !isPublished,
+            ),
+            const ButtonSegment<String>(
+              value: 'publicado',
+              label: Text('Publicado'),
+            ),
+          ],
+          selected: {_status},
+          onSelectionChanged: (Set<String> newSelection) {
+            setState(() {
+              _status = newSelection.first;
+            });
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -386,24 +416,12 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
                 },
               ),
               const SizedBox(height: 16),
-              SegmentedButton<String>(
-                segments: [
-                  ButtonSegment(
-                    value: 'borrador',
-                    label: Text('Borrador',
-                        style: AppTextStyles.buttonText(context)),
-                  ),
-                  ButtonSegment(
-                    value: 'publicado',
-                    label: Text('Publicado',
-                        style: AppTextStyles.buttonText(context)),
-                  ),
-                ],
-                selected: {_status},
-                onSelectionChanged: (Set<String> newSelection) {
-                  setState(() => _status = newSelection.first);
-                },
+              Text(
+                'Estado',
+                style: Theme.of(context).textTheme.titleMedium,
               ),
+              const SizedBox(height: 8),
+              _buildStatusSelector(),
             ],
           ),
         ),

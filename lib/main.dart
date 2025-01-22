@@ -18,7 +18,28 @@ void main() async {
 
   runApp(
     ProviderScope(
-      child: MyApp(),
+      child: Builder(
+        builder: (context) {
+          return Consumer(
+            builder: (context, ref, child) {
+              // Observar cambios en el ciclo de vida de la app
+              ref.listen(
+                appLifecycleProvider.select((value) => value.value),
+                (previous, state) {
+                  if (state != null) {
+                    final isOnline = state == AppLifecycleState.resumed;
+                    ref
+                        .read(onlineStatusProvider.notifier)
+                        .updateOnlineStatus(isOnline);
+                  }
+                },
+              );
+
+              return const MyApp();
+            },
+          );
+        },
+      ),
     ),
   );
 }
@@ -28,8 +49,6 @@ class MyApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    ref.listen<AsyncValue<void>>(onlineStatusProvider, (_, __) {});
-
     return MaterialApp(
       title: 'Chordly',
       debugShowCheckedModeBanner: false,

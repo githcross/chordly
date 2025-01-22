@@ -53,10 +53,9 @@ class HomeGroupScreen extends ConsumerWidget {
               _HorizontalCategoryCard(
                 title: 'Canciones',
                 icon: Icons.music_note,
-                count: ref.watch(songsCountProvider(group.id)).when(
+                count: ref.watch(songsCountProvider(group.id)).maybeWhen(
                       data: (count) => count,
-                      loading: () => 0,
-                      error: (_, __) => 0,
+                      orElse: () => 0,
                     ),
                 onTap: () {
                   Navigator.push(
@@ -66,7 +65,9 @@ class HomeGroupScreen extends ConsumerWidget {
                         group: group,
                       ),
                     ),
-                  );
+                  ).then((_) {
+                    ref.invalidate(songsCountProvider(group.id));
+                  });
                 },
               ),
               const SizedBox(height: 16),
