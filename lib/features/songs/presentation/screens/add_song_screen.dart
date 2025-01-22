@@ -6,6 +6,7 @@ import 'package:chordly/features/songs/utils/string_similarity.dart';
 import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:chordly/features/songs/presentation/widgets/lyrics_input_field.dart';
+import 'package:chordly/core/theme/text_styles.dart';
 
 class AddSongScreen extends ConsumerStatefulWidget {
   final String groupId;
@@ -145,112 +146,41 @@ class _AddSongScreenState extends ConsumerState<AddSongScreen> {
   Future<void> _saveSong() async {
     if (!_formKey.currentState!.validate()) return;
 
+    setState(() => _isLoading = true);
+
     try {
-      setState(() => _isLoading = true);
+      final currentUser = ref.read(authProvider).value;
+      if (currentUser == null) throw Exception('Usuario no autenticado');
 
-      final user = ref.read(authProvider).value;
-      if (user == null) throw Exception('Usuario no autenticado');
-
-      // Buscar canciones similares
-      final similarSongs = await FirebaseFirestore.instance
-          .collection('songs')
-          .where('groupId', isEqualTo: widget.groupId)
-          .get();
-
-      final String newTitle = _titleController.text.trim();
-      final similarTitles = similarSongs.docs
-          .where((doc) {
-            final existingTitle = doc.data()['title'] as String;
-            final similarity = StringSimilarity.calculateSimilarity(
-              newTitle,
-              existingTitle,
-            );
-            return similarity >= 90;
-          })
-          .map((doc) => doc.data()['title'] as String)
-          .toList();
-
-      if (similarTitles.isNotEmpty) {
-        if (!mounted) return;
-
-        // Mostrar diálogo de confirmación
-        final shouldSave = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Canciones Similares Encontradas'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Se encontraron las siguientes canciones con nombres similares:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                ...similarTitles.map((title) => Padding(
-                      padding: const EdgeInsets.only(left: 16),
-                      child: Text('• $title'),
-                    )),
-                const SizedBox(height: 16),
-                const Text('¿Desea guardar de todas formas?'),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancelar'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Guardar'),
-              ),
-            ],
-          ),
-        );
-
-        if (shouldSave != true) {
-          setState(() => _isLoading = false);
-          return;
-        }
-      }
-
-      // Continuar con el guardado
-      final songData = {
-        'title': newTitle,
-        'author': _authorController.text,
-        'lyrics': _lyricsController.text,
+      final newSong = {
+        'title': _titleController.text.trim(),
+        'author': _authorController.text.trim(),
+        'lyrics': _lyricsController.text.trim(),
+        'lyricsTranspose': _lyricsController.text.trim(),
         'baseKey': _selectedKey,
         'tags': _selectedTags,
         'tempo': int.tryParse(_tempoController.text) ?? 0,
-        'duration': _durationController.text.isEmpty
-            ? '00:00'
-            : _durationController.text,
+        'duration': _durationController.text.trim(),
         'status': _status,
-        'createdBy': user.uid,
-        'creatorName': user.displayName ?? user.email,
+        'createdBy': currentUser.uid,
         'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
         'groupId': widget.groupId,
-        'playlists': [],
         'isActive': true,
       };
 
-      final songRef =
-          await FirebaseFirestore.instance.collection('songs').add(songData);
+      await FirebaseFirestore.instance.collection('songs').add(newSong);
 
-      // Actualizar el campo songsCreated del usuario
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .update({
-        'songsCreated': FieldValue.arrayUnion([songRef.id]),
-      });
-
-      if (mounted) {
-        Navigator.pop(context, songRef.id);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Canción guardada exitosamente')),
-        );
-      }
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Canción guardada correctamente',
+            style: AppTextStyles.buttonText(context),
+          ),
+        ),
+      );
     } catch (e) {
       setState(() => _error = e.toString());
       ScaffoldMessenger.of(context).showSnackBar(

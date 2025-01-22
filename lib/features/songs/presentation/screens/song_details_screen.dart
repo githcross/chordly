@@ -392,12 +392,7 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
                   songData['duration'] ?? 'No especificada',
                 ),
                 const SizedBox(height: 10),
-                _buildInfoRow(
-                  context,
-                  Icons.person_outline,
-                  'Creado por',
-                  songData['creatorName'] ?? 'Desconocido',
-                ),
+                _buildCreatorInfo(songData['createdBy']),
                 const SizedBox(height: 10),
                 _buildInfoRow(
                   context,
@@ -504,6 +499,37 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
           groupId: widget.groupId,
         ),
       ),
+    );
+  }
+
+  Future<String> _getCreatorName(String userId) async {
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .get();
+      if (userDoc.exists) {
+        final userData = userDoc.data() as Map<String, dynamic>;
+        return userData['displayName'] ?? 'Usuario desconocido';
+      }
+      return 'Usuario no encontrado';
+    } catch (e) {
+      return 'Error al cargar usuario';
+    }
+  }
+
+  Widget _buildCreatorInfo(String creatorId) {
+    return FutureBuilder<String>(
+      future: _getCreatorName(creatorId),
+      builder: (context, snapshot) {
+        final creatorName = snapshot.data ?? 'Cargando...';
+        return _buildInfoRow(
+          context,
+          Icons.person_outline,
+          'Creado por',
+          creatorName,
+        );
+      },
     );
   }
 }
