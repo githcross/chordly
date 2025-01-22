@@ -49,10 +49,17 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
         .then((snapshot) {
       _songData = snapshot.data() as Map<String, dynamic>;
 
+      // Asegurarnos de usar siempre la letra original, nunca la transpuesta
+      final originalLyrics = _songData['lyrics'] as String?;
+      if (originalLyrics == null) {
+        throw Exception('No se encontró la letra original de la canción');
+      }
+
       setState(() {
         _titleController = TextEditingController(text: _songData['title']);
         _authorController = TextEditingController(text: _songData['author']);
-        _lyricsController = TextEditingController(text: _songData['lyrics']);
+        _lyricsController = TextEditingController(
+            text: originalLyrics); // Usar específicamente lyrics
         _tempoController =
             TextEditingController(text: ((_songData['tempo'] ?? 0).toString()));
         _durationController =
@@ -111,11 +118,14 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
       // Verificar si el usuario actual no es el creador original
       final isOriginalCreator = _songData['creatorUserId'] == currentUser.uid;
 
+      final newLyrics = _lyricsController.text.trim();
+
       // Preparar datos de actualización
       final updatedSongData = {
         'title': _titleController.text.trim(),
         'author': _authorController.text.trim(),
-        'lyrics': _lyricsController.text.trim(),
+        'lyrics': newLyrics,
+        'lyricsTranspose': newLyrics,
         'baseKey': _selectedKey,
         'tags': _selectedTags,
         'tempo': int.tryParse(_tempoController.text) ?? 0,

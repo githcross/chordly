@@ -23,7 +23,7 @@ class SongDetailsScreen extends ConsumerStatefulWidget {
 class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
   late Stream<DocumentSnapshot> _songStream;
   late String _originalLyrics;
-  late String _lyrics;
+  late String _transposedLyrics;
   final ChordService _chordService = ChordService();
   final TransformationController _transformationController =
       TransformationController();
@@ -60,9 +60,11 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     final actualFontSize = fontSize ?? _fontSize;
 
     final chordRegex = RegExp(r'\(([^)]+)\)');
-    final parts = _lyrics.split(chordRegex);
-    final chords =
-        chordRegex.allMatches(_lyrics).map((m) => m.group(1)!).toList();
+    final parts = _transposedLyrics.split(chordRegex);
+    final chords = chordRegex
+        .allMatches(_transposedLyrics)
+        .map((m) => m.group(1)!)
+        .toList();
 
     List<TextSpan> textSpans = [];
 
@@ -96,8 +98,10 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
 
   void _transposeChords(bool isHalfStepUp) {
     final chordRegex = RegExp(r'\(([^)]+)\)');
-    final chords =
-        chordRegex.allMatches(_lyrics).map((m) => m.group(1)!).toList();
+    final chords = chordRegex
+        .allMatches(_transposedLyrics)
+        .map((m) => m.group(1)!)
+        .toList();
 
     final transposedChords = chords.map((chord) {
       return isHalfStepUp
@@ -105,9 +109,9 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
           : _chordService.transposeDown(chord);
     }).toList();
 
-    String transposedLyrics = _lyrics;
+    String newTransposedLyrics = _transposedLyrics;
     for (int i = 0; i < chords.length; i++) {
-      transposedLyrics = transposedLyrics.replaceAll(
+      newTransposedLyrics = newTransposedLyrics.replaceAll(
         '(${chords[i]})',
         '(${transposedChords[i]})',
       );
@@ -115,17 +119,17 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
 
     // Actualizar estado local inmediatamente
     setState(() {
-      _lyrics = transposedLyrics;
+      _transposedLyrics = newTransposedLyrics;
     });
 
-    // Actualizar Firestore en segundo plano
+    // Actualizar solo lyricsTranspose en Firestore
     FirebaseFirestore.instance
         .collection('songs')
         .doc(widget.songId)
-        .update({'lyrics': transposedLyrics}).catchError((e) {
+        .update({'lyricsTranspose': newTransposedLyrics}).catchError((e) {
       if (!mounted) return;
       setState(() {
-        _lyrics = _originalLyrics;
+        _transposedLyrics = _originalLyrics;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -138,15 +142,15 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
 
   void _restoreOriginalChords() {
     setState(() {
-      _lyrics = _originalLyrics;
+      _transposedLyrics = _originalLyrics;
       _landscapeFontSize = 24.0;
     });
 
-    // Actualizar Firestore en segundo plano
+    // Restaurar lyricsTranspose al valor original
     FirebaseFirestore.instance
         .collection('songs')
         .doc(widget.songId)
-        .update({'lyrics': _originalLyrics}).catchError((e) {
+        .update({'lyricsTranspose': _originalLyrics}).catchError((e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -208,7 +212,7 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
             onPressed: () {
               setState(() {
                 _landscapeFontSize = 24.0;
-                _lyrics = _originalLyrics;
+                _transposedLyrics = _originalLyrics;
               });
             },
           ),
@@ -257,13 +261,20 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
         }
 
         final songData = snapshot.data!.data() as Map<String, dynamic>;
-        final newLyrics = songData['lyrics'] ?? '';
+        final newOriginalLyrics = songData['lyrics'] ?? '';
+        final newTransposedLyrics =
+            songData['lyricsTranspose'] ?? newOriginalLyrics;
 
-        // Inicializar la primera vez o actualizar cuando cambian los datos
-        if (!_isInitialized || _originalLyrics != newLyrics) {
-          _originalLyrics = newLyrics;
-          _lyrics = newLyrics;
+        // Actualizar el estado local cuando los datos cambian
+        if (!_isInitialized || _originalLyrics != newOriginalLyrics) {
+          // Si es la primera vez o si lyrics cambió (edición)
+          _originalLyrics = newOriginalLyrics;
+          _transposedLyrics =
+              newOriginalLyrics; // Usar lyrics después de edición
           _isInitialized = true;
+        } else if (_transposedLyrics != newTransposedLyrics) {
+          // Si solo cambió lyricsTranspose (transposición)
+          _transposedLyrics = newTransposedLyrics;
         }
 
         return isLandscape
