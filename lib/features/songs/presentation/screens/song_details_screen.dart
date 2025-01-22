@@ -300,16 +300,48 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
                       tooltip: 'Restaurar acordes originales',
                       onPressed: _restoreOriginalChords,
                     ),
-                    if (!isLandscape)
-                      IconButton(
-                        icon: const Icon(Icons.edit),
-                        onPressed: () => _navigateToEdit(context),
-                      ),
                   ],
                 ),
                 body: SingleChildScrollView(
                   padding: const EdgeInsets.all(16),
                   child: _buildInfoPanel(context, songData),
+                ),
+                floatingActionButton: PopupMenuButton(
+                  icon: Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary,
+                      shape: BoxShape.circle,
+                    ),
+                    padding: const EdgeInsets.all(8),
+                    child: const Icon(
+                      Icons.more_vert,
+                      color: Colors.white,
+                    ),
+                  ),
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      child: ListTile(
+                        leading: const Icon(Icons.edit),
+                        title: const Text('Editar'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      onTap: () => Future.delayed(
+                        const Duration(seconds: 0),
+                        () => _navigateToEdit(context),
+                      ),
+                    ),
+                    PopupMenuItem(
+                      child: ListTile(
+                        leading: const Icon(Icons.info_outline),
+                        title: const Text('Información'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                      onTap: () => Future.delayed(
+                        const Duration(seconds: 0),
+                        () => _showInfoDialog(context, songData),
+                      ),
+                    ),
+                  ],
                 ),
               );
       },
@@ -370,59 +402,69 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
             child: _buildHighlightedLyrics(context),
           ),
         ),
-        const SizedBox(height: 16),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildInfoRow(
-                  context,
-                  Icons.person,
-                  'Autor',
-                  songData['author'] ?? 'Desconocido',
+      ],
+    );
+  }
+
+  void _showInfoDialog(BuildContext context, Map<String, dynamic> songData) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Información de la canción',
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildInfoRow(
+                context,
+                Icons.person,
+                'Autor',
+                songData['author'] ?? 'Desconocido',
+              ),
+              const SizedBox(height: 16),
+              _buildInfoRow(
+                context,
+                Icons.timer,
+                'Duración',
+                songData['duration'] ?? 'No especificada',
+              ),
+              const SizedBox(height: 16),
+              _buildCreatorInfo(songData['createdBy']),
+              const SizedBox(height: 16),
+              _buildDatesInfo(songData),
+              const SizedBox(height: 16),
+              _buildInfoRow(
+                context,
+                Icons.info_outline,
+                'Estado',
+                songData['status'] == 'publicado' ? 'Publicado' : 'Borrador',
+              ),
+              if (songData['collaborators'] != null &&
+                  (songData['collaborators'] as List).isNotEmpty) ...[
+                const SizedBox(height: 16),
+                _buildCollaboratorsInfo(
+                  List<String>.from(songData['collaborators'] as List),
                 ),
-                const SizedBox(height: 10),
-                _buildInfoRow(
-                  context,
-                  Icons.timer,
-                  'Duración',
-                  songData['duration'] ?? 'No especificada',
-                ),
-                const SizedBox(height: 10),
-                _buildCreatorInfo(songData['createdBy']),
-                const SizedBox(height: 10),
-                _buildInfoRow(
-                  context,
-                  Icons.calendar_today,
-                  'Fecha creación',
-                  _formatTimestamp(songData['createdAt'] as Timestamp?),
-                ),
-                const SizedBox(height: 10),
-                _buildInfoRow(
-                  context,
-                  Icons.info_outline,
-                  'Estado',
-                  songData['status'] == 'publicado' ? 'Publicado' : 'Borrador',
-                ),
-                if (songData['collaborators'] != null &&
-                    (songData['collaborators'] as List).isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  _buildCollaboratorsInfo(
-                    List<String>.from(songData['collaborators'] as List),
-                  ),
-                ],
-                if (songData['tags'] != null &&
-                    (songData['tags'] as List).isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  _buildTagsRow(context, List<String>.from(songData['tags'])),
-                ],
               ],
-            ),
+              if (songData['tags'] != null &&
+                  (songData['tags'] as List).isNotEmpty) ...[
+                const SizedBox(height: 16),
+                _buildTagsRow(context, List<String>.from(songData['tags'])),
+              ],
+            ],
           ),
         ),
-      ],
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -552,5 +594,53 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
         );
       },
     );
+  }
+
+  Future<String> _getLastUpdatedByName(String? userId) async {
+    if (userId == null) return 'No disponible';
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .get();
+      return userDoc.data()?['displayName'] ?? 'Usuario no encontrado';
+    } catch (e) {
+      return 'Error al cargar usuario';
+    }
+  }
+
+  Widget _buildDatesInfo(Map<String, dynamic> songData) {
+    return Column(
+      children: [
+        ListTile(
+          leading: const Icon(Icons.calendar_today),
+          title: const Text('Fecha de creación'),
+          subtitle:
+              Text(_formatFirestoreDate(songData['createdAt'] as Timestamp?)),
+        ),
+        ListTile(
+          leading: const Icon(Icons.update),
+          title: const Text('Última actualización'),
+          subtitle:
+              Text(_formatFirestoreDate(songData['updatedAt'] as Timestamp?)),
+        ),
+        FutureBuilder<String>(
+          future: _getLastUpdatedByName(songData['lastUpdatedBy'] as String?),
+          builder: (context, snapshot) {
+            return ListTile(
+              leading: const Icon(Icons.person_outline),
+              title: const Text('Actualizado por'),
+              subtitle: Text(snapshot.data ?? 'Cargando...'),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  String _formatFirestoreDate(Timestamp? timestamp) {
+    if (timestamp == null) return 'No disponible';
+    final dateTime = timestamp.toDate();
+    return DateFormat('dd/MM/yyyy HH:mm').format(dateTime);
   }
 }
