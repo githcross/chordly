@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chordly/features/auth/providers/auth_provider.dart';
 import 'package:chordly/features/groups/providers/firestore_service_provider.dart';
 import 'package:chordly/features/groups/services/firestore_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 final appLifecycleProvider =
     StreamProvider.autoDispose<AppLifecycleState>((ref) {
@@ -36,32 +38,30 @@ class _AppLifecycleObserver extends WidgetsBindingObserver {
 }
 
 class OnlineStatusNotifier extends StateNotifier<bool> {
-  final FirestoreService _firestoreService;
-  final String _userId;
-
-  OnlineStatusNotifier(this._firestoreService, this._userId) : super(true) {
-    updateOnlineStatus(true);
-  }
+  OnlineStatusNotifier() : super(false);
 
   Future<void> updateOnlineStatus(bool isOnline) async {
     state = isOnline;
-    await _firestoreService.updateUserOnlineStatus(_userId, isOnline);
-  }
 
-  @override
-  void dispose() {
-    updateOnlineStatus(false);
-    super.dispose();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .update({
+          'isOnline': isOnline,
+          'lastSeen': isOnline ? null : FieldValue.serverTimestamp(),
+        });
+      } catch (e) {
+        // Manejar error silenciosamente
+        print('Error updating online status: $e');
+      }
+    }
   }
 }
 
 final onlineStatusProvider =
     StateNotifierProvider<OnlineStatusNotifier, bool>((ref) {
-  final user = ref.watch(authProvider).value;
-  if (user == null) throw Exception('Usuario no autenticado');
-
-  return OnlineStatusNotifier(
-    ref.read(firestoreServiceProvider),
-    user.uid,
-  );
+  return OnlineStatusNotifier();
 });

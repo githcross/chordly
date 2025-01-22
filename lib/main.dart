@@ -6,6 +6,7 @@ import 'package:chordly/firebase_options.dart';
 import 'package:chordly/features/auth/presentation/screens/auth_check_screen.dart';
 import 'package:chordly/features/auth/providers/online_status_provider.dart';
 import 'package:chordly/features/songs/services/song_purge_service.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -15,6 +16,13 @@ void main() async {
 
   // Ejecutar purga al inicio
   await SongPurgeService.purgeSongs();
+
+  // Agregar esta línea antes de runApp
+  await FirebaseAppCheck.instance.activate(
+    webProvider: ReCaptchaV3Provider('recaptcha-v3-site-key'),
+    androidProvider: AndroidProvider.debug,
+    appleProvider: AppleProvider.appAttest,
+  );
 
   runApp(
     ProviderScope(

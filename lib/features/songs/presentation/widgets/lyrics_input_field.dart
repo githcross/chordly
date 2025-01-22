@@ -218,7 +218,8 @@ class _LyricsInputFieldState extends State<LyricsInputField> {
       decoration: InputDecoration(
         errorText: widget.errorText,
         hintText: 'Escribe la letra con acordes...',
-        helperText: 'Formato: {[Am]}palabra{/}',
+        helperText:
+            'Formato: Selecciona nota para insertar o escribe la nota entre parentecis',
         helperMaxLines: 2,
         border: const OutlineInputBorder(),
         suffixIcon: IconButton(

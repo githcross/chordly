@@ -8,6 +8,8 @@ import 'package:chordly/core/services/cloudinary_service.dart';
 import 'package:chordly/features/groups/providers/firestore_service_provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:chordly/core/theme/text_styles.dart';
+import 'package:intl/intl.dart';
+import 'package:chordly/features/auth/providers/online_status_provider.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   final String userId;
@@ -24,20 +26,25 @@ class ProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
-  String? _biography;
+  late Stream<Map<String, dynamic>> _combinedStream;
 
   @override
   void initState() {
     super.initState();
-    _loadUserData();
+    _setupCombinedStream();
   }
 
-  Future<void> _loadUserData() async {
-    final userDoc =
-        await ref.read(firestoreServiceProvider).getUserById(widget.userId);
-    final userData = userDoc.data() as Map<String, dynamic>?;
-    setState(() {
-      _biography = userData?['biography'] as String?;
+  void _setupCombinedStream() {
+    final userStream = FirebaseFirestore.instance
+        .collection('users')
+        .doc(widget.userId)
+        .snapshots();
+
+    _combinedStream = userStream.map((snapshot) {
+      if (!snapshot.exists) {
+        throw Exception('No se encontró el perfil');
+      }
+      return snapshot.data() as Map<String, dynamic>;
     });
   }
 
@@ -47,9 +54,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       await ref
           .read(firestoreServiceProvider)
           .updateUserBiography(user.uid, newBiography);
-      setState(() {
-        _biography = newBiography;
-      });
     }
   }
 
@@ -78,26 +82,40 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Future<void> _updateDisplayName(String newDisplayName) async {
     final user = ref.read(authProvider).value;
     if (user != null) {
-      await user.updateDisplayName(newDisplayName);
-      await ref
-          .read(firestoreServiceProvider)
-          .updateUserDisplayNameInDocs(user.uid, newDisplayName);
-      ref.invalidate(authProvider);
+      try {
+        await user.updateDisplayName(newDisplayName);
+
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .update({
+          'displayName': newDisplayName,
+        });
+
+        await ref
+            .read(firestoreServiceProvider)
+            .updateUserDisplayNameInDocs(user.uid, newDisplayName);
+
+        ref.invalidate(authProvider);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error al actualizar nombre: $e')),
+          );
+        }
+      }
     }
   }
 
-  void _showEditBiographyDialog() async {
-    final controller = TextEditingController(text: _biography);
-
+  void _showEditBiographyDialog(String? currentBiography) async {
+    final controller = TextEditingController(text: currentBiography);
     final newBiography = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Editar Biografía'),
         content: TextField(
           controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'Biografía',
-          ),
+          decoration: const InputDecoration(labelText: 'Biografía'),
           maxLines: 3,
         ),
         actions: [
@@ -113,14 +131,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ),
     );
 
-    if (newBiography != null) {
+    if (newBiography != null && mounted) {
       await _updateBiography(newBiography);
     }
   }
 
   void _showEditDisplayNameDialog() async {
-    final controller =
-        TextEditingController(text: ref.read(authProvider).value?.displayName);
+    final currentUser = ref.read(authProvider).value;
+    if (currentUser == null) return;
+
+    final controller = TextEditingController(text: currentUser.displayName);
 
     final newDisplayName = await showDialog<String>(
       context: context,
@@ -145,7 +165,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ),
     );
 
-    if (newDisplayName != null) {
+    if (newDisplayName != null && mounted) {
       await _updateDisplayName(newDisplayName);
     }
   }
@@ -167,123 +187,216 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         : child;
   }
 
+  String _formatFirestoreDate(Timestamp? timestamp) {
+    if (timestamp == null) return 'No disponible';
+    final dateTime = timestamp.toDate();
+    return DateFormat('dd/MM/yyyy HH:mm').format(dateTime);
+  }
+
+  Widget _buildEditableName(String? displayName, bool canEdit) {
+    return InkWell(
+      onTap: canEdit ? _showEditDisplayNameDialog : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8.0),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              displayName ?? 'Sin nombre',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 24,
+                  ),
+            ),
+            if (canEdit)
+              const Padding(
+                padding: EdgeInsets.only(left: 4),
+                child: Icon(Icons.edit, size: 18, color: Colors.grey),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final currentUser = ref.watch(authProvider).value;
-    final isCurrentUser = currentUser?.uid == widget.userId;
+    final authUser = ref.watch(authProvider).value;
+    if (authUser == null) return const SizedBox();
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Perfil'),
-        actions: [
-          if (isCurrentUser)
-            IconButton(
-              icon: const Icon(Icons.edit),
-              onPressed: _showEditDisplayNameDialog,
-            ),
-        ],
+        title: Text('Perfil', style: AppTextStyles.appBarTitle(context)),
       ),
-      body: FutureBuilder<DocumentSnapshot>(
-        future: ref.read(firestoreServiceProvider).getUserById(widget.userId),
+      body: StreamBuilder<Map<String, dynamic>>(
+        stream: _combinedStream,
         builder: (context, snapshot) {
-          if (!snapshot.hasData) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final userData = snapshot.data!.data() as Map<String, dynamic>?;
-          final displayName = userData?['displayName'] as String?;
-          final email = userData?['email'] as String?;
-          final photoURL = userData?['profilePicture'] as String?;
+          if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          }
 
-          return ListView(
+          final userData = snapshot.data!;
+          final displayName = userData['displayName'] as String?;
+          final email = userData['email'] as String?;
+          final photoURL = userData['profilePicture'] as String?;
+          final biography = userData['biography'] as String?;
+
+          return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
-            children: [
-              Center(
-                child: Stack(
-                  children: [
-                    CircleAvatar(
-                      radius: 60,
-                      backgroundImage:
-                          photoURL != null ? NetworkImage(photoURL) : null,
-                      child: photoURL == null
-                          ? const Icon(Icons.person, size: 60)
-                          : null,
-                    ),
-                    if (isCurrentUser)
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: CircleAvatar(
-                          backgroundColor:
-                              Theme.of(context).colorScheme.primary,
-                          child: IconButton(
-                            icon: const Icon(Icons.edit, color: Colors.white),
-                            onPressed: _updateProfilePicture,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Stack(
+                    children: [
+                      CircleAvatar(
+                        radius: 60,
+                        backgroundImage:
+                            photoURL != null ? NetworkImage(photoURL) : null,
+                        child: photoURL == null
+                            ? const Icon(Icons.person, size: 60)
+                            : null,
+                      ),
+                      if (authUser.uid == widget.userId)
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: CircleAvatar(
+                            backgroundColor:
+                                Theme.of(context).colorScheme.primary,
+                            child: IconButton(
+                              icon: const Icon(Icons.edit, color: Colors.white),
+                              onPressed: _updateProfilePicture,
+                            ),
                           ),
                         ),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Center(
-                child: Text(
-                  displayName ?? 'Sin nombre',
-                  style: AppTextStyles.sectionTitle(context),
-                ),
-              ),
-              if (isCurrentUser)
-                Center(
-                  child: TextButton(
-                    onPressed: _showEditDisplayNameDialog,
-                    child: const Text('Editar nombre'),
+                    ],
                   ),
                 ),
-              const SizedBox(height: 24),
-              ListTile(
-                leading: const Icon(Icons.info),
-                title: Text(
-                  'Biografía',
-                  style: AppTextStyles.itemTitle(context),
+                const SizedBox(height: 16),
+                Center(
+                  child: _buildEditableName(
+                    displayName,
+                    authUser.uid == widget.userId,
+                  ),
                 ),
-                subtitle: Text(
-                  _biography ?? 'Sin biografía',
-                  style: AppTextStyles.subtitle(context),
+                Center(
+                  child: _buildLastSeenInfo(userData),
                 ),
-                trailing: isCurrentUser
-                    ? IconButton(
-                        icon: const Icon(Icons.edit),
-                        onPressed: _showEditBiographyDialog,
-                      )
-                    : null,
-              ),
-              ListTile(
-                leading: const Icon(Icons.email),
-                title: const Text('Correo electrónico'),
-                subtitle: Text(email ?? ''),
-              ),
-              ListTile(
-                leading: const Icon(Icons.verified_user),
-                title: const Text('Verificado'),
-                subtitle:
-                    Text(currentUser?.emailVerified == true ? 'Sí' : 'No'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.calendar_today),
-                title: const Text('Fecha de creación'),
-                subtitle:
-                    Text(currentUser?.metadata.creationTime?.toString() ?? ''),
-              ),
-              ListTile(
-                leading: const Icon(Icons.calendar_today),
-                title: const Text('Último inicio de sesión'),
-                subtitle: Text(
-                    currentUser?.metadata.lastSignInTime?.toString() ?? ''),
-              ),
-            ],
+                const SizedBox(height: 24),
+                ListTile(
+                  leading: const Icon(Icons.info),
+                  title: Text(
+                    'Biografía',
+                    style: AppTextStyles.itemTitle(context),
+                  ),
+                  subtitle: Text(
+                    biography ?? 'Sin biografía',
+                    style: AppTextStyles.subtitle(context),
+                  ),
+                  trailing: authUser.uid == widget.userId
+                      ? IconButton(
+                          icon: const Icon(Icons.edit,
+                              size: 18, color: Colors.grey),
+                          onPressed: () => _showEditBiographyDialog(biography),
+                        )
+                      : null,
+                ),
+                ListTile(
+                  leading: const Icon(Icons.email),
+                  title: const Text('Correo electrónico'),
+                  subtitle: Text(email ?? ''),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.verified_user),
+                  title: const Text('Verificado'),
+                  subtitle: Text(authUser.emailVerified == true ? 'Sí' : 'No'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.calendar_today),
+                  title: const Text('Fecha de creación'),
+                  subtitle: Text(_formatFirestoreDate(
+                      userData['createdAt'] as Timestamp?)),
+                ),
+                _buildProfileInfo(userData),
+                const SizedBox(height: 24),
+                _buildStatistics(userData),
+              ],
+            ),
           );
         },
       ),
     );
+  }
+
+  Widget _buildProfileInfo(Map<String, dynamic> userData) {
+    // Implementation of _buildProfileInfo method
+    // This method should return a Widget
+    return Container(); // Placeholder return, actual implementation needed
+  }
+
+  Widget _buildStatistics(Map<String, dynamic> userData) {
+    // Implementation of _buildStatistics method
+    // This method should return a Widget
+    return Container(); // Placeholder return, actual implementation needed
+  }
+
+  Widget _buildLastSeenInfo(Map<String, dynamic> userData) {
+    final isOnline = userData['isOnline'] as bool? ?? false;
+
+    if (isOnline) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: Colors.green[400],
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.green.withOpacity(0.4),
+                  blurRadius: 4,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            'En línea',
+            style: TextStyle(
+              color: Colors.grey[600],
+              fontSize: 14,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.access_time, size: 16, color: Colors.grey[600]),
+        const SizedBox(width: 4),
+        Text(
+          'Última vez ${_formatFirestoreDate(userData['lastSeen'] as Timestamp?)}',
+          style: TextStyle(
+            color: Colors.grey[600],
+            fontSize: 14,
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _navigateToEditProfile(BuildContext context) {
+    // Implementation of _navigateToEditProfile method
+    // This method should navigate to the edit profile screen
   }
 }

@@ -445,19 +445,77 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           style: AppTextStyles.appBarTitle(context),
         ),
         actions: [
-          IconButton(
-            icon: CircleAvatar(
-              backgroundImage:
-                  user?.photoURL != null ? NetworkImage(user!.photoURL!) : null,
-              child: user?.photoURL == null ? const Icon(Icons.person) : null,
-            ),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ProfileScreen(
-                    userId: user!.uid,
-                    canEdit: true,
+          StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('users')
+                .doc(user?.uid)
+                .snapshots(),
+            builder: (context, snapshot) {
+              final userData = snapshot.data?.data() as Map<String, dynamic>?;
+              final isOnline = userData?['isOnline'] as bool? ?? false;
+
+              return GestureDetector(
+                onTap: () {
+                  if (user?.uid != null) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ProfileScreen(
+                          userId: user!.uid,
+                          canEdit: true,
+                        ),
+                      ),
+                    );
+                  }
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Stack(
+                    children: [
+                      CircleAvatar(
+                        radius: 20,
+                        backgroundImage: user?.photoURL != null
+                            ? NetworkImage(user!.photoURL!)
+                            : null,
+                        child: user?.photoURL == null
+                            ? const Icon(Icons.person)
+                            : null,
+                      ),
+                      if (isOnline)
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.white,
+                                width: 2,
+                              ),
+                            ),
+                            child: Center(
+                              child: Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: Colors.green[400],
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.green.withOpacity(0.4),
+                                      blurRadius: 4,
+                                      spreadRadius: 1,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               );
@@ -586,4 +644,50 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       ),
     );
   }
+}
+
+Widget _buildAvatarWithOnlineIndicator(String? photoURL, bool isOnline) {
+  return Stack(
+    children: [
+      CircleAvatar(
+        radius: 20,
+        backgroundImage: photoURL != null ? NetworkImage(photoURL) : null,
+        child: photoURL == null ? const Icon(Icons.person) : null,
+      ),
+      if (isOnline)
+        Positioned(
+          bottom: 0,
+          right: 0,
+          child: Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.white,
+                width: 2,
+              ),
+            ),
+            child: Center(
+              child: Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: Colors.green[400],
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.green.withOpacity(0.4),
+                      blurRadius: 4,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+    ],
+  );
 }
