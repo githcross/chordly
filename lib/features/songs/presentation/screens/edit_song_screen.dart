@@ -6,6 +6,7 @@ import 'package:chordly/features/songs/models/song_model.dart';
 import 'package:chordly/features/songs/presentation/widgets/lyrics_input_field.dart';
 import 'package:chordly/features/auth/providers/auth_provider.dart';
 import 'package:chordly/core/theme/text_styles.dart';
+import 'package:chordly/core/utils/snackbar_utils.dart';
 
 class EditSongScreen extends ConsumerStatefulWidget {
   final String songId;
@@ -147,28 +148,20 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
           .update(updatedSongData);
 
       if (!mounted) return;
-      Navigator.pop(context, true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Canción actualizada correctamente',
-            style: AppTextStyles.buttonText(context),
-          ),
-        ),
+      Navigator.pop(context);
+      SnackBarUtils.showSnackBar(
+        context,
+        message: 'Canción actualizada correctamente',
       );
     } catch (e) {
       setState(() {
         _error = e.toString();
         _isLoading = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Error al actualizar: $e',
-            style: AppTextStyles.buttonText(context),
-          ),
-          backgroundColor: Colors.red,
-        ),
+      SnackBarUtils.showSnackBar(
+        context,
+        message: 'Error al actualizar: $e',
+        isError: true,
       );
     }
   }

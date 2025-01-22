@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:chordly/features/songs/presentation/screens/edit_song_screen.dart';
 import 'package:chordly/features/songs/services/chord_service.dart';
 import 'package:chordly/core/theme/text_styles.dart';
+import 'package:chordly/core/utils/snackbar_utils.dart';
 
 class SongDetailsScreen extends ConsumerStatefulWidget {
   final String songId;
@@ -131,11 +132,10 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
       setState(() {
         _transposedLyrics = _originalLyrics;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error al guardar la transposición: $e'),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
+      SnackBarUtils.showSnackBar(
+        context,
+        message: 'Error al guardar la transposición: $e',
+        isError: true,
       );
     });
   }
@@ -152,11 +152,10 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
         .doc(widget.songId)
         .update({'lyricsTranspose': _originalLyrics}).catchError((e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error al restaurar acordes: $e'),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
+      SnackBarUtils.showSnackBar(
+        context,
+        message: 'Error al restaurar acordes: $e',
+        isError: true,
       );
     });
   }

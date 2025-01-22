@@ -7,6 +7,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:chordly/features/songs/presentation/widgets/lyrics_input_field.dart';
 import 'package:chordly/core/theme/text_styles.dart';
+import 'package:chordly/core/utils/snackbar_utils.dart';
 
 class AddSongScreen extends ConsumerStatefulWidget {
   final String groupId;
@@ -173,21 +174,16 @@ class _AddSongScreenState extends ConsumerState<AddSongScreen> {
 
       if (!mounted) return;
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Canción guardada correctamente',
-            style: AppTextStyles.buttonText(context),
-          ),
-        ),
+      SnackBarUtils.showSnackBar(
+        context,
+        message: 'Canción guardada correctamente',
       );
     } catch (e) {
       setState(() => _error = e.toString());
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error al guardar: $_error'),
-          backgroundColor: Colors.red,
-        ),
+      SnackBarUtils.showSnackBar(
+        context,
+        message: 'Error al guardar: $_error',
+        isError: true,
       );
     } finally {
       setState(() => _isLoading = false);
@@ -208,11 +204,10 @@ class _AddSongScreenState extends ConsumerState<AddSongScreen> {
         _selectedTags.add(newTag);
       });
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error al agregar tag: $e'),
-          backgroundColor: Colors.red,
-        ),
+      SnackBarUtils.showSnackBar(
+        context,
+        message: 'Error al agregar tag: $e',
+        isError: true,
       );
     }
   }
@@ -243,38 +238,11 @@ class _AddSongScreenState extends ConsumerState<AddSongScreen> {
     if (title.isEmpty) return;
 
     final similarTitles = await _checkSimilarTitles(title);
-    if (similarTitles.isNotEmpty && mounted) {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          title: const Text('Títulos Similares Encontrados'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Se encontraron las siguientes canciones con nombres similares:',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              ...similarTitles.map((title) => Padding(
-                    padding: const EdgeInsets.only(left: 16),
-                    child: Text('• $title'),
-                  )),
-              const SizedBox(height: 16),
-              const Text(
-                'Puedes continuar escribiendo o modificar el título.',
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Entendido'),
-            ),
-          ],
-        ),
+    if (similarTitles.isNotEmpty) {
+      SnackBarUtils.showSnackBar(
+        context,
+        message: 'Ya existe una canción con un título similar',
+        isError: true,
       );
     }
   }
