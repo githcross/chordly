@@ -410,13 +410,8 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
                 if (songData['collaborators'] != null &&
                     (songData['collaborators'] as List).isNotEmpty) ...[
                   const SizedBox(height: 10),
-                  _buildInfoRow(
-                    context,
-                    Icons.group,
-                    'Colaboradores',
-                    (songData['collaborators'] as List)
-                        .map((c) => c.toString())
-                        .join(', '),
+                  _buildCollaboratorsInfo(
+                    List<String>.from(songData['collaborators'] as List),
                   ),
                 ],
                 if (songData['tags'] != null &&
@@ -528,6 +523,33 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
           Icons.person_outline,
           'Creado por',
           creatorName,
+        );
+      },
+    );
+  }
+
+  Future<List<String>> _getCollaboratorNames(
+      List<String> collaboratorIds) async {
+    try {
+      final collaboratorNames = await Future.wait(
+        collaboratorIds.map((id) => _getCreatorName(id)),
+      );
+      return collaboratorNames;
+    } catch (e) {
+      return ['Error al cargar colaboradores'];
+    }
+  }
+
+  Widget _buildCollaboratorsInfo(List<String> collaboratorIds) {
+    return FutureBuilder<List<String>>(
+      future: _getCollaboratorNames(collaboratorIds),
+      builder: (context, snapshot) {
+        final collaboratorNames = snapshot.data?.join(', ') ?? 'Cargando...';
+        return _buildInfoRow(
+          context,
+          Icons.group,
+          'Colaboradores',
+          collaboratorNames,
         );
       },
     );
