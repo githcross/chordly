@@ -9,6 +9,7 @@ import 'package:chordly/features/groups/providers/invitations_provider.dart';
 import 'package:chordly/features/groups/models/group_invitation_model.dart';
 import 'package:chordly/features/profile/presentation/screens/profile_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:chordly/core/theme/text_styles.dart';
 
 class GroupListItem extends StatelessWidget {
   final GroupModel group;
@@ -31,12 +32,7 @@ class GroupListItem extends StatelessWidget {
             Expanded(
               child: Text(
                 group.name,
-                style: GoogleFonts.poppins(
-                  textStyle: Theme.of(context).textTheme.bodyLarge,
-                  fontWeight: FontWeight.w100,
-                  letterSpacing: 0.3,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
+                style: AppTextStyles.itemTitle(context),
               ),
             ),
           ],
@@ -65,11 +61,7 @@ class GroupListItem extends StatelessWidget {
               ),
         subtitle: Text(
           group.description,
-          style: GoogleFonts.poppins(
-            textStyle: Theme.of(context).textTheme.bodyMedium,
-            fontWeight: FontWeight.w500,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
+          style: AppTextStyles.subtitle(context),
         ),
         leading: CircleAvatar(
           backgroundImage:
@@ -130,22 +122,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Crear nuevo grupo'),
+        title: Text('Crear nuevo grupo',
+            style: AppTextStyles.dialogTitle(context)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: nameController,
-              decoration: const InputDecoration(
+              style: AppTextStyles.inputText(context),
+              decoration: InputDecoration(
                 labelText: 'Nombre del grupo',
+                labelStyle: AppTextStyles.metadata(context),
                 hintText: 'Ingresa el nombre del grupo',
               ),
             ),
             const SizedBox(height: 16),
             TextField(
               controller: descriptionController,
-              decoration: const InputDecoration(
+              style: AppTextStyles.inputText(context),
+              decoration: InputDecoration(
                 labelText: 'Descripción',
+                labelStyle: AppTextStyles.metadata(context),
                 hintText: 'Ingresa una descripción',
               ),
               maxLines: 3,
@@ -197,11 +194,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           final invitations = ref.watch(pendingInvitationsProvider);
 
           return AlertDialog(
-            title: const Text('Invitaciones'),
+            title:
+                Text('Invitaciones', style: AppTextStyles.dialogTitle(context)),
             content: invitations.when(
               data: (invitations) {
                 if (invitations.isEmpty) {
-                  return const Text('No tienes invitaciones pendientes');
+                  return Text(
+                    'No tienes invitaciones pendientes',
+                    style: AppTextStyles.subtitle(context),
+                  );
                 }
                 return SizedBox(
                   width: double.maxFinite,
@@ -400,12 +401,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         centerTitle: false,
         title: Text(
           'Chordly',
-          style: GoogleFonts.montserrat(
-            textStyle: Theme.of(context).textTheme.titleLarge,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 1.2,
-            color: Theme.of(context).colorScheme.primary,
-          ),
+          style: AppTextStyles.appBarTitle(context),
         ),
         actions: [
           IconButton(

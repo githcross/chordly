@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:chordly/core/services/cloudinary_service.dart';
 import 'package:chordly/features/groups/providers/firestore_service_provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:chordly/core/theme/text_styles.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   final String userId;
@@ -228,7 +229,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               Center(
                 child: Text(
                   displayName ?? 'Sin nombre',
-                  style: Theme.of(context).textTheme.headlineSmall,
+                  style: AppTextStyles.sectionTitle(context),
                 ),
               ),
               if (isCurrentUser)
@@ -241,8 +242,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               const SizedBox(height: 24),
               ListTile(
                 leading: const Icon(Icons.info),
-                title: const Text('Biografía'),
-                subtitle: Text(_biography ?? 'Sin biografía'),
+                title: Text(
+                  'Biografía',
+                  style: AppTextStyles.itemTitle(context),
+                ),
+                subtitle: Text(
+                  _biography ?? 'Sin biografía',
+                  style: AppTextStyles.subtitle(context),
+                ),
                 trailing: isCurrentUser
                     ? IconButton(
                         icon: const Icon(Icons.edit),

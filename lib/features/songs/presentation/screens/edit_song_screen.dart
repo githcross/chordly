@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chordly/features/songs/models/song_model.dart';
 import 'package:chordly/features/songs/presentation/widgets/lyrics_input_field.dart';
 import 'package:chordly/features/auth/providers/auth_provider.dart';
+import 'package:chordly/core/theme/text_styles.dart';
 
 class EditSongScreen extends ConsumerStatefulWidget {
   final String songId;
@@ -137,26 +138,21 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
         ]);
       }
 
-      // Actualizar la canción
+      // Actualizar la canción en Firestore
       await FirebaseFirestore.instance
           .collection('songs')
           .doc(widget.songId)
           .update(updatedSongData);
 
-      // Si no es el creador original, actualizar el perfil del usuario
-      if (!isOriginalCreator) {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(currentUser.uid)
-            .update({
-          'songsCollaborated': FieldValue.arrayUnion([widget.songId]),
-        });
-      }
-
       if (!mounted) return;
       Navigator.pop(context, true);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Canción actualizada correctamente')),
+        SnackBar(
+          content: Text(
+            'Canción actualizada correctamente',
+            style: AppTextStyles.buttonText(context),
+          ),
+        ),
       );
     } catch (e) {
       setState(() {
@@ -165,7 +161,10 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error al actualizar: $e'),
+          content: Text(
+            'Error al actualizar: $e',
+            style: AppTextStyles.buttonText(context),
+          ),
           backgroundColor: Colors.red,
         ),
       );
@@ -219,12 +218,13 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Editar Canción'),
+        title:
+            Text('Editar Canción', style: AppTextStyles.appBarTitle(context)),
         actions: [
           FilledButton.icon(
             onPressed: _updateSong,
             icon: const Icon(Icons.save),
-            label: const Text('Guardar'),
+            label: Text('Guardar', style: AppTextStyles.buttonText(context)),
           ),
           const SizedBox(width: 16),
         ],
@@ -238,8 +238,10 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
             children: [
               TextFormField(
                 controller: _titleController,
-                decoration: const InputDecoration(
+                style: AppTextStyles.inputText(context),
+                decoration: InputDecoration(
                   labelText: 'Título *',
+                  labelStyle: AppTextStyles.metadata(context),
                   border: OutlineInputBorder(),
                 ),
                 validator: (value) {
@@ -252,8 +254,10 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
               const SizedBox(height: 16),
               TextFormField(
                 controller: _authorController,
-                decoration: const InputDecoration(
+                style: AppTextStyles.inputText(context),
+                decoration: InputDecoration(
                   labelText: 'Autor *',
+                  labelStyle: AppTextStyles.metadata(context),
                   border: OutlineInputBorder(),
                 ),
                 validator: (value) {
@@ -266,14 +270,17 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 value: _selectedKey,
-                decoration: const InputDecoration(
+                style: AppTextStyles.inputText(context),
+                decoration: InputDecoration(
                   labelText: 'Tono *',
+                  labelStyle: AppTextStyles.metadata(context),
                   border: OutlineInputBorder(),
                 ),
                 items: _availableNotes
                     .map((note) => DropdownMenuItem(
                           value: note,
-                          child: Text(note),
+                          child: Text(note,
+                              style: AppTextStyles.itemTitle(context)),
                         ))
                     .toList(),
                 onChanged: (value) {
@@ -294,27 +301,28 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
                   Expanded(
                     child: TextFormField(
                       controller: _tempoController,
-                      decoration: const InputDecoration(
+                      style: AppTextStyles.inputText(context),
+                      decoration: InputDecoration(
                         labelText: 'BPM',
+                        labelStyle: AppTextStyles.metadata(context),
                         border: OutlineInputBorder(),
                         hintText: '120',
                       ),
                       keyboardType: TextInputType.number,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                      ],
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: TextFormField(
                       controller: _durationController,
-                      decoration: const InputDecoration(
+                      style: AppTextStyles.inputText(context),
+                      decoration: InputDecoration(
                         labelText: 'Duración (mm:ss)',
+                        labelStyle: AppTextStyles.metadata(context),
                         border: OutlineInputBorder(),
                         hintText: '3:45',
                       ),
-                      keyboardType: TextInputType.datetime,
                       validator: _validateDuration,
                       inputFormatters: [
                         FilteringTextInputFormatter.allow(RegExp(r'[0-9:]')),
@@ -344,13 +352,14 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
                 ],
               ),
               const SizedBox(height: 16),
-              const Text('Tags'),
+              Text('Tags', style: AppTextStyles.sectionTitle(context)),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: _availableTags
                     .map((tag) => FilterChip(
-                          label: Text(tag),
+                          label:
+                              Text(tag, style: AppTextStyles.metadata(context)),
                           selected: _selectedTags.contains(tag),
                           onSelected: (selected) {
                             setState(() {
@@ -368,6 +377,7 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
               LyricsInputField(
                 songId: widget.songId,
                 controller: _lyricsController,
+                style: AppTextStyles.lyrics(context),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Por favor, ingresa la letra de la canción';
@@ -377,14 +387,16 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
               ),
               const SizedBox(height: 16),
               SegmentedButton<String>(
-                segments: const [
+                segments: [
                   ButtonSegment(
                     value: 'borrador',
-                    label: Text('Borrador'),
+                    label: Text('Borrador',
+                        style: AppTextStyles.buttonText(context)),
                   ),
                   ButtonSegment(
                     value: 'publicado',
-                    label: Text('Publicado'),
+                    label: Text('Publicado',
+                        style: AppTextStyles.buttonText(context)),
                   ),
                 ],
                 selected: {_status},

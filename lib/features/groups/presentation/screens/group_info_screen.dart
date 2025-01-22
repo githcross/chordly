@@ -13,6 +13,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:chordly/core/services/cloudinary_service.dart';
 import 'package:chordly/features/profile/presentation/screens/profile_screen.dart';
+import 'package:chordly/core/theme/text_styles.dart';
 
 class GroupInfoScreen extends ConsumerStatefulWidget {
   final GroupModel group;
@@ -133,12 +134,18 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text('Editar rol de ${member.displayName}'),
+          title: Text(
+            'Editar rol de ${member.displayName}',
+            style: AppTextStyles.dialogTitle(context),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: GroupRole.values.map((role) {
               return ListTile(
-                title: Text(role.name.toUpperCase()),
+                title: Text(
+                  role.name.toUpperCase(),
+                  style: AppTextStyles.itemTitle(context),
+                ),
                 leading: Icon(
                   role == GroupRole.admin
                       ? Icons.admin_panel_settings
@@ -621,18 +628,8 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
                                                 children: [
                                                   Text(
                                                     currentGroup.name,
-                                                    style: Theme.of(context)
-                                                        .textTheme
-                                                        .headlineSmall
-                                                        ?.copyWith(
-                                                          fontWeight:
-                                                              FontWeight.bold,
-                                                          letterSpacing: 0.5,
-                                                          color:
-                                                              Theme.of(context)
-                                                                  .colorScheme
-                                                                  .primary,
-                                                        ),
+                                                    style: AppTextStyles
+                                                        .sectionTitle(context),
                                                     textAlign: TextAlign.center,
                                                   ),
                                                   if (widget.userRole ==
@@ -697,23 +694,9 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
                                                                   .description,
                                                           textAlign:
                                                               TextAlign.center,
-                                                          style:
-                                                              Theme.of(context)
-                                                                  .textTheme
-                                                                  .bodyMedium
-                                                                  ?.copyWith(
-                                                                    color: currentGroup
-                                                                            .description.isEmpty
-                                                                        ? Theme.of(context)
-                                                                            .colorScheme
-                                                                            .onSurfaceVariant
-                                                                        : Theme.of(context)
-                                                                            .colorScheme
-                                                                            .onSurface,
-                                                                    height: 1.5,
-                                                                    letterSpacing:
-                                                                        0.2,
-                                                                  ),
+                                                          style: AppTextStyles
+                                                              .subtitle(
+                                                                  context),
                                                         ),
                                                       ),
                                                       if (widget.userRole ==
@@ -969,15 +952,15 @@ class _StatItem extends StatelessWidget {
         Expanded(
           child: Text(
             title,
-            style: Theme.of(context).textTheme.titleMedium,
+            style: AppTextStyles.itemTitle(context),
           ),
         ),
         Text(
           value,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: Theme.of(context).colorScheme.primary,
-                fontWeight: FontWeight.bold,
-              ),
+          style: AppTextStyles.metadata(context).copyWith(
+            color: Theme.of(context).colorScheme.primary,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ],
     );
@@ -1039,11 +1022,17 @@ class _MemberListItem extends ConsumerWidget {
           ),
         ],
       ),
-      title: Text(name),
+      title: Text(
+        name,
+        style: AppTextStyles.itemTitle(context),
+      ),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(email),
+          Text(
+            email,
+            style: AppTextStyles.subtitle(context),
+          ),
           if (!isOnline && lastSeen != null)
             Text(
               _getLastSeenText(),
@@ -1266,10 +1255,9 @@ class TopNotification extends StatelessWidget {
           ),
           child: Text(
             message,
-            style: const TextStyle(
+            style: AppTextStyles.buttonText(context).copyWith(
               color: Colors.white,
               fontSize: 16,
-              fontWeight: FontWeight.w500,
             ),
             textAlign: TextAlign.center,
           ),

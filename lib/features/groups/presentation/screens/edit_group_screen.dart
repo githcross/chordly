@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chordly/features/groups/models/group_model.dart';
+import 'package:chordly/core/theme/text_styles.dart';
 
 class EditGroupScreen extends ConsumerStatefulWidget {
   final GroupModel group;
@@ -78,7 +79,7 @@ class _EditGroupScreenState extends ConsumerState<EditGroupScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Editar Grupo'),
+        title: Text('Editar Grupo', style: AppTextStyles.appBarTitle(context)),
         actions: [
           if (_isLoading)
             const Center(
@@ -134,8 +135,10 @@ class _EditGroupScreenState extends ConsumerState<EditGroupScreen> {
             const SizedBox(height: 24),
             TextField(
               controller: _nameController,
-              decoration: const InputDecoration(
+              style: AppTextStyles.inputText(context),
+              decoration: InputDecoration(
                 labelText: 'Nombre del grupo',
+                labelStyle: AppTextStyles.metadata(context),
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.group),
               ),
@@ -143,8 +146,10 @@ class _EditGroupScreenState extends ConsumerState<EditGroupScreen> {
             const SizedBox(height: 16),
             TextField(
               controller: _descriptionController,
-              decoration: const InputDecoration(
+              style: AppTextStyles.inputText(context),
+              decoration: InputDecoration(
                 labelText: 'Descripción',
+                labelStyle: AppTextStyles.metadata(context),
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.description),
               ),

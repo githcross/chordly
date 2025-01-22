@@ -8,6 +8,7 @@ class LyricsInputField extends StatefulWidget {
   final ValueChanged<String>? onChanged;
   final String? Function(String?)? validator;
   final String? songId;
+  final TextStyle? style;
 
   const LyricsInputField({
     super.key,
@@ -16,6 +17,7 @@ class LyricsInputField extends StatefulWidget {
     this.onChanged,
     this.validator,
     this.songId,
+    this.style,
   });
 
   @override
@@ -209,6 +211,7 @@ class _LyricsInputFieldState extends State<LyricsInputField> {
   Widget build(BuildContext context) {
     return TextFormField(
       controller: _controller,
+      style: widget.style,
       maxLines: null,
       keyboardType: TextInputType.multiline,
       validator: widget.validator,
