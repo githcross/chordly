@@ -410,6 +410,7 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
               LyricsInputField(
                 songId: widget.songId,
                 controller: _lyricsController,
+                style: AppTextStyles.lyrics(context),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Por favor, ingresa la letra de la canción';
