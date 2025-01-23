@@ -160,6 +160,21 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     });
   }
 
+  void _increaseFontSize() {
+    setState(() {
+      _fontSize = _fontSize + 2.0;
+    });
+  }
+
+  void _decreaseFontSize() {
+    setState(() {
+      if (_fontSize > 8.0) {
+        // Evitamos que la fuente sea demasiado pequeña
+        _fontSize = _fontSize - 2.0;
+      }
+    });
+  }
+
   Widget _buildLandscapeContent(
       BuildContext context, Map<String, dynamic> songData) {
     return Scaffold(
@@ -285,6 +300,14 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
                     style: AppTextStyles.appBarTitle(context),
                   ),
                   actions: [
+                    IconButton(
+                      icon: const Icon(Icons.text_decrease),
+                      onPressed: _decreaseFontSize,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.text_increase),
+                      onPressed: _increaseFontSize,
+                    ),
                     IconButton(
                       icon: const Icon(Icons.arrow_upward),
                       tooltip: 'Subir medio tono',
