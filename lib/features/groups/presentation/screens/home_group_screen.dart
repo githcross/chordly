@@ -5,7 +5,9 @@ import 'package:chordly/features/groups/presentation/screens/edit_group_screen.d
 import 'package:chordly/features/groups/presentation/screens/group_info_screen.dart';
 import 'package:chordly/features/songs/presentation/screens/add_song_screen.dart';
 import 'package:chordly/features/songs/presentation/screens/list_songs_screen.dart';
-import 'package:chordly/features/songs/providers/songs_provider.dart';
+import 'package:chordly/features/songs/presentation/screens/edit_song_screen.dart';
+import 'package:chordly/features/playlists/presentation/screens/playlist_screen.dart';
+import 'package:chordly/features/playlists/presentation/screens/select_songs_screen.dart';
 import 'package:chordly/core/theme/text_styles.dart';
 
 class HomeGroupScreen extends ConsumerWidget {
@@ -43,102 +45,135 @@ class HomeGroupScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildCard(
+              context,
+              title: 'Canciones',
+              icon: Icons.music_note,
+              onTap: () => _openSongs(context),
+            ),
+            const SizedBox(height: 16),
+            _buildCard(
+              context,
+              title: 'Playlists',
+              icon: Icons.queue_music,
+              onTap: () => _openPlaylists(context),
+            ),
+          ],
+        ),
+      ),
+      floatingActionButton: userRole == GroupRole.admin
+          ? FloatingActionButton(
+              onPressed: () => _showAddOptions(context),
+              child: const Icon(Icons.add),
+            )
+          : null,
+    );
+  }
+
+  void _showAddOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.music_note),
+            title: const Text('Agregar Canción'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => AddSongScreen(groupId: group.id),
+                ),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.playlist_add),
+            title: const Text('Crear Playlist'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => PlaylistScreen(groupId: group.id),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCard(
+    BuildContext context, {
+    required String title,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
             children: [
-              _HorizontalCategoryCard(
-                title: 'Canciones',
-                icon: Icons.music_note,
-                count: ref.watch(songsCountProvider(group.id)).maybeWhen(
-                      data: (count) => count,
-                      orElse: () => 0,
-                    ),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ListSongsScreen(
-                        group: group,
-                      ),
-                    ),
-                  ).then((_) {
-                    ref.invalidate(songsCountProvider(group.id));
-                  });
-                },
-              ),
-              const SizedBox(height: 16),
-              _HorizontalCategoryCard(
-                title: 'Playlists',
-                icon: Icons.queue_music,
-                count: 0, // TODO: Obtener conteo real
-                onTap: () {
-                  // TODO: Navegar a lista de playlists
-                },
+              Icon(icon, size: 32),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
               ),
             ],
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          showModalBottomSheet(
-            context: context,
-            builder: (context) => Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(16),
-                ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (userRole != GroupRole.member)
-                    ListTile(
-                      leading: Icon(
-                        Icons.music_note,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      title: const Text('Agregar Canción'),
-                      onTap: () {
-                        Navigator.pop(context);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => AddSongScreen(
-                              groupId: group.id,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  if (userRole != GroupRole.member) const Divider(),
-                  ListTile(
-                    leading: Icon(
-                      Icons.playlist_add,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                    title: const Text('Agregar Playlist'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      // TODO: Implementar agregar playlist
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Próximamente: Agregar playlist'),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-        child: const Icon(Icons.add),
+    );
+  }
+
+  void _openSongs(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ListSongsScreen(group: group),
+      ),
+    );
+  }
+
+  void _addSong(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AddSongScreen(groupId: group.id),
+      ),
+    );
+  }
+
+  void _openPlaylists(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PlaylistScreen(groupId: group.id),
+      ),
+    );
+  }
+
+  void _createPlaylist(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SelectSongsScreen(
+          groupId: group.id,
+        ),
       ),
     );
   }

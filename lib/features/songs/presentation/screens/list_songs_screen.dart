@@ -12,6 +12,7 @@ import 'package:chordly/features/songs/presentation/screens/song_details_screen.
 import 'package:rxdart/rxdart.dart';
 import 'package:chordly/features/auth/providers/auth_provider.dart';
 import 'package:chordly/core/theme/text_styles.dart';
+import 'package:chordly/features/songs/presentation/screens/add_song_screen.dart';
 
 class ListSongsScreen extends ConsumerStatefulWidget {
   final GroupModel group;
@@ -43,6 +44,17 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
         ),
         actions: [
           IconButton(
+            icon: Icon(
+                _ascendingOrder ? Icons.arrow_upward : Icons.arrow_downward),
+            tooltip:
+                _ascendingOrder ? 'Ordenar descendente' : 'Ordenar ascendente',
+            onPressed: () {
+              setState(() {
+                _ascendingOrder = !_ascendingOrder;
+              });
+            },
+          ),
+          IconButton(
             icon: Badge(
               isLabelVisible: _selectedTags.isNotEmpty,
               label: Text(_selectedTags.length.toString()),
@@ -61,59 +73,11 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
               );
             },
           ),
+          IconButton(
+            icon: const Icon(Icons.more_vert),
+            onPressed: () => _showOptions(context),
+          ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        child: const Icon(Icons.more_horiz),
-        onPressed: () {
-          showModalBottomSheet(
-            context: context,
-            builder: (context) => Container(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.delete_outline),
-                    title: const Text('Canciones eliminadas'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => DeletedSongsScreen(
-                            group: widget.group,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.share),
-                    title: const Text('Compartir canciones'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _shareSongs();
-                    },
-                  ),
-                  ListTile(
-                    leading: Icon(_ascendingOrder
-                        ? Icons.arrow_upward
-                        : Icons.arrow_downward),
-                    title: Text(
-                        'Ordenar ${_ascendingOrder ? "descendente" : "ascendente"}'),
-                    onTap: () {
-                      setState(() {
-                        _ascendingOrder = !_ascendingOrder;
-                      });
-                      Navigator.pop(context);
-                    },
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
       ),
       body: Column(
         children: [
@@ -475,6 +439,60 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
       _overlayEntry?.remove();
       _overlayEntry = null;
     });
+  }
+
+  void _showOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.add),
+              title: const Text('Agregar canción'),
+              onTap: () {
+                Navigator.pop(context);
+                _addSong(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.share),
+              title: const Text('Compartir lista'),
+              onTap: () {
+                Navigator.pop(context);
+                _shareSongs();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('Ver canciones eliminadas'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => DeletedSongsScreen(
+                      group: widget.group,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _addSong(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AddSongScreen(groupId: widget.group.id),
+      ),
+    );
   }
 
   @override
