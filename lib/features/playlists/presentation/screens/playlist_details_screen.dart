@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:chordly/core/theme/text_styles.dart';
-import 'package:chordly/features/playlists/presentation/screens/presentation_mode_screen.dart';
 import 'package:chordly/features/playlists/models/playlist_model.dart';
 import 'package:chordly/features/playlists/presentation/screens/edit_playlist_screen.dart';
+import 'package:chordly/features/songs/presentation/screens/song_details_screen.dart';
 
 class PlaylistDetailsScreen extends StatelessWidget {
   final String playlistId;
@@ -45,10 +45,6 @@ class PlaylistDetailsScreen extends StatelessWidget {
               IconButton(
                 icon: const Icon(Icons.edit),
                 onPressed: () => _editPlaylist(context, data),
-              ),
-              IconButton(
-                icon: const Icon(Icons.play_arrow),
-                onPressed: () => _startPresentation(context),
               ),
             ],
           ),
@@ -123,11 +119,36 @@ class PlaylistDetailsScreen extends StatelessWidget {
               title: Text(songData['title']),
               subtitle: Text(songData['author']),
               trailing: Text(song['transposedKey']),
+              onTap: () => _openSongDetails(
+                context,
+                song['songId'],
+                playlistData['groupId'],
+                songs.map((s) => s['songId'] as String).toList(),
+              ),
             ),
           );
         },
       );
     }).toList();
+  }
+
+  void _openSongDetails(
+    BuildContext context,
+    String songId,
+    String groupId,
+    List<String> playlistSongs,
+  ) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SongDetailsScreen(
+          songId: songId,
+          groupId: groupId,
+          playlistSongs: playlistSongs,
+          currentIndex: playlistSongs.indexOf(songId),
+        ),
+      ),
+    );
   }
 
   void _editPlaylist(BuildContext context, Map<String, dynamic> data) {
@@ -153,17 +174,6 @@ class PlaylistDetailsScreen extends StatelessWidget {
       context,
       MaterialPageRoute(
         builder: (context) => EditPlaylistScreen(playlist: playlist),
-      ),
-    );
-  }
-
-  void _startPresentation(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => PresentationModeScreen(
-          playlistId: playlistId,
-        ),
       ),
     );
   }

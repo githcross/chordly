@@ -13,6 +13,10 @@ import 'package:rxdart/rxdart.dart';
 import 'package:chordly/features/auth/providers/auth_provider.dart';
 import 'package:chordly/core/theme/text_styles.dart';
 import 'package:chordly/features/songs/presentation/screens/add_song_screen.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 class ListSongsScreen extends ConsumerStatefulWidget {
   final GroupModel group;
@@ -33,50 +37,75 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
   String? _lastDeletedSongTitle;
   OverlayEntry? _overlayEntry;
   final _searchController = TextEditingController();
+  bool _isSelectionMode = false;
+  Set<String> _selectedSongs = {};
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'Canciones',
+          _isSelectionMode
+              ? '${_selectedSongs.length} seleccionados'
+              : 'Canciones',
           style: AppTextStyles.appBarTitle(context),
         ),
+        leading: _isSelectionMode
+            ? IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () {
+                  setState(() {
+                    _isSelectionMode = false;
+                    _selectedSongs.clear();
+                  });
+                },
+              )
+            : null,
         actions: [
-          IconButton(
-            icon: Icon(
-                _ascendingOrder ? Icons.arrow_upward : Icons.arrow_downward),
-            tooltip:
-                _ascendingOrder ? 'Ordenar descendente' : 'Ordenar ascendente',
-            onPressed: () {
-              setState(() {
-                _ascendingOrder = !_ascendingOrder;
-              });
-            },
-          ),
-          IconButton(
-            icon: Badge(
-              isLabelVisible: _selectedTags.isNotEmpty,
-              label: Text(_selectedTags.length.toString()),
-              child: const Icon(Icons.tag),
+          if (_isSelectionMode) ...[
+            IconButton(
+              icon: const Icon(Icons.share),
+              onPressed: _selectedSongs.isNotEmpty
+                  ? () => _shareSongs(_selectedSongs.toList())
+                  : null,
             ),
-            tooltip: 'Filtrar por tags',
-            onPressed: _showTagFilter,
-          ),
-          IconButton(
-            icon: const Icon(Icons.search),
-            tooltip: 'Buscar canciones',
-            onPressed: () {
-              showSearch(
-                context: context,
-                delegate: SongSearchDelegate(groupId: widget.group.id),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.more_vert),
-            onPressed: () => _showOptions(context),
-          ),
+          ] else ...[
+            IconButton(
+              icon: Icon(
+                  _ascendingOrder ? Icons.arrow_upward : Icons.arrow_downward),
+              tooltip: _ascendingOrder
+                  ? 'Ordenar descendente'
+                  : 'Ordenar ascendente',
+              onPressed: () {
+                setState(() {
+                  _ascendingOrder = !_ascendingOrder;
+                });
+              },
+            ),
+            IconButton(
+              icon: Badge(
+                isLabelVisible: _selectedTags.isNotEmpty,
+                label: Text(_selectedTags.length.toString()),
+                child: const Icon(Icons.tag),
+              ),
+              tooltip: 'Filtrar por tags',
+              onPressed: _showTagFilter,
+            ),
+            IconButton(
+              icon: const Icon(Icons.search),
+              tooltip: 'Buscar canciones',
+              onPressed: () {
+                showSearch(
+                  context: context,
+                  delegate: SongSearchDelegate(groupId: widget.group.id),
+                );
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.more_vert),
+              onPressed: () => _showOptions(context),
+            ),
+          ],
         ],
       ),
       body: Column(
@@ -113,38 +142,68 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
                 return ListView.builder(
                   itemCount: songs.length,
                   itemBuilder: (context, index) {
-                    final song = songs[index]!;
+                    final song = songs[index];
                     final data = song.data() as Map<String, dynamic>;
+                    final isSelected = _selectedSongs.contains(song.id);
 
                     return Dismissible(
                       key: Key(song.id),
                       direction: DismissDirection.endToStart,
-                      confirmDismiss: (_) async {
-                        final songTitle = data['title'] as String;
-                        final songId = song.id;
-                        setState(() {
-                          _lastDeletedSongId = songId;
-                          _lastDeletedSongTitle = songTitle;
-                        });
+                      confirmDismiss: (direction) async {
+                        return await showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Confirmar eliminación'),
+                            content: Text(
+                                '¿Estás seguro de que quieres eliminar "${data['title']}"?'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, false),
+                                child: const Text('CANCELAR'),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, true),
+                                child: const Text('ELIMINAR'),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                      onDismissed: (direction) async {
+                        _lastDeletedSongId = song.id;
+                        _lastDeletedSongTitle = data['title'];
 
                         await FirebaseFirestore.instance
                             .collection('songs')
-                            .doc(songId)
-                            .update({
-                          'isActive': false,
-                          'deletedAt': FieldValue.serverTimestamp(),
-                        });
+                            .doc(song.id)
+                            .update({'isActive': false});
 
-                        _showDeleteBanner(songTitle);
-                        return true;
+                        _showDeleteBanner(data['title']);
                       },
                       background: Container(
-                        color: Colors.red,
+                        color: Theme.of(context).colorScheme.error,
                         alignment: Alignment.centerRight,
-                        padding: const EdgeInsets.only(right: 20.0),
-                        child: const Icon(Icons.delete, color: Colors.white),
+                        padding: const EdgeInsets.only(right: 16),
+                        child: Icon(
+                          Icons.delete_outline,
+                          color: Theme.of(context).colorScheme.onError,
+                        ),
                       ),
                       child: ListTile(
+                        leading: _isSelectionMode
+                            ? Checkbox(
+                                value: isSelected,
+                                onChanged: (value) {
+                                  setState(() {
+                                    if (value!) {
+                                      _selectedSongs.add(song.id);
+                                    } else {
+                                      _selectedSongs.remove(song.id);
+                                    }
+                                  });
+                                },
+                              )
+                            : null,
                         title: Text(
                           data['title'] as String,
                           style:
@@ -162,17 +221,33 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
                                 fontWeight: FontWeight.w500,
                               ),
                         ),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => SongDetailsScreen(
-                                songId: song.id,
-                                groupId: widget.group.id,
-                              ),
-                            ),
-                          );
-                        },
+                        onTap: _isSelectionMode
+                            ? () {
+                                setState(() {
+                                  if (isSelected) {
+                                    _selectedSongs.remove(song.id);
+                                  } else {
+                                    _selectedSongs.add(song.id);
+                                  }
+                                });
+                              }
+                            : () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => SongDetailsScreen(
+                                      songId: song.id,
+                                      groupId: widget.group.id,
+                                    ),
+                                  ),
+                                ),
+                        onLongPress: !_isSelectionMode
+                            ? () {
+                                setState(() {
+                                  _isSelectionMode = true;
+                                  _selectedSongs.add(song.id);
+                                });
+                              }
+                            : null,
                       ),
                     );
                   },
@@ -224,68 +299,78 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
     );
   }
 
-  Future<void> _shareSongs() async {
+  Future<void> _shareSongs(List<String> songIds) async {
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('songs')
-          .where('groupId', isEqualTo: widget.group.id)
-          .where('isActive', isEqualTo: true)
-          .orderBy('title')
-          .get();
+      if (songIds.isEmpty) return;
 
-      final songs = snapshot.docs
-          .map((doc) =>
-              SongModel.fromMap(doc.id, doc.data() as Map<String, dynamic>))
-          .toList();
+      final tempDir = await getTemporaryDirectory();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final pdfPath = '${tempDir.path}/songs_$timestamp.pdf';
 
-      if (songs.isEmpty) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No hay canciones para compartir'),
-          ),
-        );
-        return;
-      }
-
-      // Crear texto formateado
-      final buffer = StringBuffer();
-      buffer.writeln('LISTA DE CANCIONES');
-      buffer.writeln('Grupo: ${widget.group.name}');
-      buffer.writeln(
-          'Fecha: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}');
-      buffer.writeln('----------------------------------------');
-      buffer.writeln('');
-
-      for (final song in songs) {
-        buffer.writeln('📝 ${song.title.toUpperCase()}');
-        buffer.writeln('👤 Autor: ${song.author}');
-        buffer.writeln('🎵 Clave: ${song.baseKey}');
-        if (song.duration.isNotEmpty) {
-          buffer.writeln('⏱️ Duración: ${song.duration}');
-        }
-        if (song.tags.isNotEmpty) {
-          buffer.writeln('🏷️ Tags: ${song.tags.join(", ")}');
-        }
-        buffer.writeln('----------------------------------------');
-      }
-
-      buffer.writeln('');
-      buffer.writeln('Total de canciones: ${songs.length}');
-      buffer.writeln('');
-      buffer.writeln('Compartido desde Chordly');
-
-      await Share.share(
-        buffer.toString(),
-        subject: 'Lista de Canciones - ${widget.group.name}',
+      // Obtener datos de las canciones
+      final songs = await Future.wait(
+        songIds.map((id) =>
+            FirebaseFirestore.instance.collection('songs').doc(id).get()),
       );
+
+      // Crear y guardar el PDF
+      final document = PdfDocument();
+      _createPdfDocument(document, songs);
+      final List<int> bytes = await document.save();
+      await File(pdfPath).writeAsBytes(bytes);
+      document.dispose();
+
+      // Compartir el PDF
+      await Share.shareFiles([pdfPath], text: 'Canciones compartidas');
+
+      setState(() {
+        _isSelectionMode = false;
+        _selectedSongs.clear();
+      });
     } catch (e) {
-      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error al compartir: $e'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text('Error al compartir: $e')),
+      );
+    }
+  }
+
+  void _createPdfDocument(PdfDocument document, List<DocumentSnapshot> songs) {
+    // Configurar estilo del documento
+    final PdfStandardFont titleFont =
+        PdfStandardFont(PdfFontFamily.helvetica, 20, style: PdfFontStyle.bold);
+    final PdfStandardFont subtitleFont =
+        PdfStandardFont(PdfFontFamily.helvetica, 14);
+    final PdfStandardFont contentFont =
+        PdfStandardFont(PdfFontFamily.helvetica, 12);
+
+    for (var song in songs) {
+      final data = song.data() as Map<String, dynamic>;
+      final PdfPage page = document.pages.add();
+      final PdfGraphics graphics = page.graphics;
+      final Rect bounds = Rect.fromLTWH(40, 40, page.getClientSize().width - 80,
+          page.getClientSize().height - 80);
+
+      // Agregar título
+      graphics.drawString(
+        data['title'],
+        titleFont,
+        bounds: Rect.fromLTWH(bounds.left, bounds.top, bounds.width, 30),
+      );
+
+      // Agregar autor
+      graphics.drawString(
+        'Autor: ${data['author']}',
+        subtitleFont,
+        bounds: Rect.fromLTWH(bounds.left, bounds.top + 40, bounds.width, 20),
+      );
+
+      // Agregar letra
+      graphics.drawString(
+        data['lyrics'],
+        contentFont,
+        bounds: Rect.fromLTWH(
+            bounds.left, bounds.top + 80, bounds.width, bounds.height - 80),
+        format: PdfStringFormat(lineSpacing: 5),
       );
     }
   }
@@ -457,14 +542,14 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
                 _addSong(context);
               },
             ),
-            ListTile(
+            /*ListTile(
               leading: const Icon(Icons.share),
               title: const Text('Compartir lista'),
               onTap: () {
                 Navigator.pop(context);
-                _shareSongs();
+                _shareSongs(_selectedSongs.toList());
               },
-            ),
+            ),*/
             ListTile(
               leading: const Icon(Icons.delete_outline),
               title: const Text('Ver canciones eliminadas'),

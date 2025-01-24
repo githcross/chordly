@@ -6,22 +6,29 @@ import 'package:chordly/features/songs/presentation/screens/edit_song_screen.dar
 import 'package:chordly/features/songs/services/chord_service.dart';
 import 'package:chordly/core/theme/text_styles.dart';
 import 'package:chordly/core/utils/snackbar_utils.dart';
+import 'package:chordly/features/songs/presentation/screens/teleprompter_screen.dart';
+import 'dart:async';
+import 'package:audioplayers/audioplayers.dart';
 
-class SongDetailsScreen extends ConsumerStatefulWidget {
+class SongDetailsScreen extends StatefulWidget {
   final String songId;
   final String groupId;
+  final List<String>? playlistSongs;
+  final int? currentIndex;
 
   const SongDetailsScreen({
     Key? key,
     required this.songId,
     required this.groupId,
+    this.playlistSongs,
+    this.currentIndex,
   }) : super(key: key);
 
   @override
-  ConsumerState<SongDetailsScreen> createState() => _SongDetailsScreenState();
+  State<SongDetailsScreen> createState() => _SongDetailsScreenState();
 }
 
-class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
+class _SongDetailsScreenState extends State<SongDetailsScreen> {
   late Stream<DocumentSnapshot> _songStream;
   late String _originalLyrics;
   late String _transposedLyrics;
@@ -32,19 +39,53 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
   double _fontSize = 16.0;
   double _landscapeFontSize = 16.0;
   bool _isInitialized = false;
+  late PageController _pageController;
+  int _currentIndex = 0;
+  final ScrollController _autoScrollController = ScrollController();
+  bool _isAutoScrolling = false;
+  double _scrollSpeed = 50.0; // Pixeles por segundo
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  final AudioPlayer _metronome = AudioPlayer();
+  Timer? _metronomeTimer;
+  bool _isPlayingMetronome = false;
+  int? _soundId;
+  int? _lastBeatTime;
+
+  // Agregar getter para isLandscape
+  bool get isLandscape =>
+      MediaQuery.of(context).orientation == Orientation.landscape;
 
   @override
   void initState() {
     super.initState();
+    _currentIndex = widget.currentIndex ?? 0;
+    _pageController = PageController(initialPage: _currentIndex);
     _songStream = FirebaseFirestore.instance
         .collection('songs')
         .doc(widget.songId)
         .snapshots();
+    _initMetronome();
+  }
+
+  Future<void> _initMetronome() async {
+    try {
+      await _metronome.setSource(AssetSource('audio/click.wav'));
+      await _metronome.setVolume(1.0);
+      await _metronome.setReleaseMode(ReleaseMode.stop);
+      print('Metrónomo inicializado');
+    } catch (e) {
+      print('Error al inicializar el metrónomo: $e');
+    }
   }
 
   @override
   void dispose() {
     _transformationController.dispose();
+    _pageController.dispose();
+    _autoScrollController.dispose();
+    _audioPlayer.dispose();
+    _metronomeTimer?.cancel();
+    _metronome.dispose();
     super.dispose();
   }
 
@@ -249,9 +290,151 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isLandscape =
-        MediaQuery.of(context).orientation == Orientation.landscape;
+    // Si no viene de una playlist, mostrar vista normal
+    if (widget.playlistSongs == null) {
+      return isLandscape
+          ? _buildLandscapeContent(context, {})
+          : _buildSingleSongView();
+    }
 
+    // Vista con lista lateral para playlist
+    return Scaffold(
+      body: Row(
+        children: [
+          // Lista lateral de canciones (solo en tablets o pantallas anchas)
+          if (MediaQuery.of(context).size.width > 600)
+            SizedBox(
+              width: 300,
+              child: Material(
+                elevation: 4,
+                child: Column(
+                  children: [
+                    AppBar(
+                      title: const Text('Canciones'),
+                      automaticallyImplyLeading: false,
+                    ),
+                    Expanded(
+                      child: _buildSongsList(),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          // Vista principal de la canción
+          Expanded(
+            child: PageView.builder(
+              controller: _pageController,
+              itemCount: widget.playlistSongs!.length,
+              onPageChanged: (index) {
+                setState(() => _currentIndex = index);
+              },
+              itemBuilder: (context, index) {
+                return _buildSongView(widget.playlistSongs![index]);
+              },
+            ),
+          ),
+        ],
+      ),
+      // Mostrar botón de lista en dispositivos móviles
+      floatingActionButton: MediaQuery.of(context).size.width <= 600
+          ? FloatingActionButton(
+              child: const Icon(Icons.list),
+              onPressed: () => _showSongsBottomSheet(context),
+            )
+          : null,
+    );
+  }
+
+  void _showSongsBottomSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.7,
+        padding: const EdgeInsets.only(top: 8),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Canciones de la Playlist',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(child: _buildSongsList()),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSongsList() {
+    return StreamBuilder<List<DocumentSnapshot>>(
+      stream: _getSongsStream(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        return ListView.builder(
+          itemCount: snapshot.data!.length,
+          itemBuilder: (context, index) {
+            final song = snapshot.data![index];
+            final data = song.data() as Map<String, dynamic>;
+            final isSelected = index == _currentIndex;
+
+            return ListTile(
+              selected: isSelected,
+              leading: isSelected
+                  ? Icon(Icons.play_arrow,
+                      color: Theme.of(context).colorScheme.primary)
+                  : Text('${index + 1}',
+                      style: Theme.of(context).textTheme.bodyLarge),
+              title: Text(
+                data['title'],
+                style: TextStyle(
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                ),
+              ),
+              subtitle: Text(data['author'] ?? ''),
+              onTap: () {
+                _pageController.animateToPage(
+                  index,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut,
+                );
+                // Cerrar bottom sheet si está abierto
+                if (MediaQuery.of(context).size.width <= 600) {
+                  Navigator.pop(context);
+                }
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Stream<List<DocumentSnapshot>> _getSongsStream() {
+    return Stream.fromFuture(
+      Future.wait(
+        widget.playlistSongs!.map(
+          (id) => FirebaseFirestore.instance.collection('songs').doc(id).get(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSingleSongView() {
     return StreamBuilder<DocumentSnapshot>(
       stream: _songStream,
       builder: (context, snapshot) {
@@ -352,6 +535,128 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     );
   }
 
+  Widget _buildSongView(String songId) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('songs')
+          .doc(songId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final songData = snapshot.data!.data() as Map<String, dynamic>;
+        _originalLyrics = songData['lyrics'];
+        if (!_isInitialized) {
+          _transposedLyrics = _originalLyrics;
+          _isInitialized = true;
+        }
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(
+              songData['title'] ?? 'Detalles de la Canción',
+              style: AppTextStyles.appBarTitle(context),
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.present_to_all),
+                tooltip: 'Modo Teleprompter',
+                onPressed: () => _showTeleprompterMode(context, songData),
+              ),
+              IconButton(
+                icon: const Icon(Icons.arrow_upward),
+                tooltip: 'Subir medio tono',
+                onPressed: () => _transposeChords(true),
+              ),
+              IconButton(
+                icon: const Icon(Icons.arrow_downward),
+                tooltip: 'Bajar medio tono',
+                onPressed: () => _transposeChords(false),
+              ),
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                tooltip: 'Restaurar acordes originales',
+                onPressed: _restoreOriginalChords,
+              ),
+            ],
+          ),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          songData['title'] ?? 'Sin título',
+                          style: Theme.of(context)
+                              .textTheme
+                              .headlineSmall
+                              ?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Chip(
+                              avatar: Icon(
+                                Icons.music_note,
+                                color: Theme.of(context).colorScheme.primary,
+                                size: 18,
+                              ),
+                              label: Text(
+                                songData['baseKey'] ?? 'No especificada',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                              ),
+                              backgroundColor:
+                                  Theme.of(context).colorScheme.surfaceVariant,
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 8.0),
+                            ),
+                            const SizedBox(width: 8),
+                            if (songData['tempo'] != null &&
+                                songData['tempo'] is int &&
+                                songData['tempo'] > 0)
+                              _buildBpmButton(
+                                  context, songData['tempo'] as int),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const Divider(height: 1),
+                Card(
+                  margin: EdgeInsets.zero, // Eliminar margen de la Card
+                  shape: RoundedRectangleBorder(
+                    borderRadius:
+                        BorderRadius.zero, // Eliminar bordes redondeados
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(5.0),
+                    child: _buildHighlightedLyrics(context),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildInfoPanel(BuildContext context, Map<String, dynamic> songData) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -389,23 +694,10 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 8.0),
                   ),
                   const SizedBox(width: 8),
-                  if (songData['tempo'] != null && songData['tempo'] != 0)
-                    Chip(
-                      avatar: Icon(
-                        Icons.speed,
-                        color: Theme.of(context).colorScheme.primary,
-                        size: 18,
-                      ),
-                      label: Text(
-                        '${songData['tempo']} BPM',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w500,
-                            ),
-                      ),
-                      backgroundColor:
-                          Theme.of(context).colorScheme.surfaceVariant,
-                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                    ),
+                  if (songData['tempo'] != null &&
+                      songData['tempo'] is int &&
+                      songData['tempo'] > 0)
+                    _buildBpmButton(context, songData['tempo'] as int),
                 ],
               ),
             ],
@@ -491,7 +783,22 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
   }
 
   Widget _buildInfoRow(
-      BuildContext context, IconData icon, String label, String value) {
+      BuildContext context, IconData icon, String label, dynamic value) {
+    if (label == 'BPM' && value is int && value > 0) {
+      return Row(
+        children: [
+          Icon(icon, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 8),
+          Text(
+            '$label: ',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+          _buildBpmButton(context, value),
+        ],
+      );
+    }
     return Row(
       children: [
         Icon(icon, color: Theme.of(context).colorScheme.primary),
@@ -504,13 +811,96 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
         ),
         Expanded(
           child: Text(
-            value,
+            value.toString(),
             style: Theme.of(context).textTheme.bodyMedium,
             overflow: TextOverflow.ellipsis,
           ),
         ),
       ],
     );
+  }
+
+  Widget _buildBpmButton(BuildContext context, int bpm) {
+    return Container(
+      margin: const EdgeInsets.only(left: 8),
+      child: InkWell(
+        onTap: () => _toggleMetronome(bpm),
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: _isPlayingMetronome
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.primaryContainer,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                _isPlayingMetronome ? Icons.pause : Icons.play_arrow,
+                size: 20,
+                color: _isPlayingMetronome
+                    ? Theme.of(context).colorScheme.onPrimary
+                    : Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '$bpm BPM',
+                style: TextStyle(
+                  color: _isPlayingMetronome
+                      ? Theme.of(context).colorScheme.onPrimary
+                      : Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _toggleMetronome(int bpm) async {
+    if (_isPlayingMetronome) {
+      _stopMetronome();
+    } else {
+      _startMetronome(bpm);
+    }
+  }
+
+  void _startMetronome(int bpm) {
+    try {
+      // Cancelar timer existente
+      _metronomeTimer?.cancel();
+
+      // Calcular intervalo en milisegundos
+      final interval = (60000 / bpm).round();
+      print('Iniciando metrónomo a $bpm BPM (intervalo: $interval ms)');
+
+      // Reproducir primer beat
+      _metronome.stop();
+      _metronome.resume();
+
+      setState(() => _isPlayingMetronome = true);
+
+      // Iniciar timer para los siguientes beats
+      _metronomeTimer = Timer.periodic(Duration(milliseconds: interval), (_) {
+        if (_isPlayingMetronome) {
+          _metronome.stop();
+          _metronome.resume();
+        }
+      });
+    } catch (e) {
+      print('Error: $e');
+      _stopMetronome();
+    }
+  }
+
+  void _stopMetronome() {
+    _metronomeTimer?.cancel();
+    _metronome.stop();
+    setState(() => _isPlayingMetronome = false);
   }
 
   Widget _buildTagsRow(BuildContext context, List<dynamic> tags) {
@@ -664,5 +1054,19 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     if (timestamp == null) return 'No disponible';
     final dateTime = timestamp.toDate();
     return DateFormat('dd/MM/yyyy HH:mm').format(dateTime);
+  }
+
+  void _showTeleprompterMode(
+      BuildContext context, Map<String, dynamic> songData) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => TeleprompterScreen(
+          title: songData['title'],
+          lyrics: _transposedLyrics,
+          playlistSongs: widget.playlistSongs,
+          currentIndex: _currentIndex,
+        ),
+      ),
+    );
   }
 }

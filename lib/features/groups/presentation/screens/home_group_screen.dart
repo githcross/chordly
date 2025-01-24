@@ -28,7 +28,7 @@ class HomeGroupScreen extends ConsumerWidget {
           group.name,
           style: AppTextStyles.appBarTitle(context),
         ),
-        actions: [
+        /*actions: [
           IconButton(
             icon: const Icon(Icons.info_outline),
             onPressed: () {
@@ -43,7 +43,7 @@ class HomeGroupScreen extends ConsumerWidget {
               );
             },
           ),
-        ],
+        ],*/
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
