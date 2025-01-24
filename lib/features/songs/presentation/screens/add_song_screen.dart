@@ -36,6 +36,7 @@ class _AddSongScreenState extends ConsumerState<AddSongScreen> {
   String _status = 'borrador';
   bool _isLoading = true;
   String? _error;
+  bool _isLyricsFullScreen = false;
 
   final List<String> _defaultNotes = [
     'C',
@@ -269,6 +270,64 @@ class _AddSongScreenState extends ConsumerState<AddSongScreen> {
     super.dispose();
   }
 
+  Widget _buildLyricsEditor() {
+    if (_isLyricsFullScreen) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Agregar Letra'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => setState(() => _isLyricsFullScreen = false),
+          ),
+          actions: [
+            IconButton(
+              onPressed: _saveSong,
+              icon: const Icon(Icons.save_outlined),
+              tooltip: 'Guardar',
+            ),
+            const SizedBox(width: 8),
+          ],
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(5),
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height,
+            child: LyricsInputField(
+              controller: _lyricsController,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontSize: 14.0,
+                  ),
+              isFullScreen: true,
+              onToggleFullScreen: () =>
+                  setState(() => _isLyricsFullScreen = false),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Por favor, ingresa la letra de la canción';
+                }
+                return null;
+              },
+            ),
+          ),
+        ),
+      );
+    }
+
+    return LyricsInputField(
+      controller: _lyricsController,
+      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            fontSize: 14.0,
+          ),
+      isFullScreen: false,
+      onToggleFullScreen: () => setState(() => _isLyricsFullScreen = true),
+      validator: (value) {
+        if (value == null || value.isEmpty) {
+          return 'Por favor, ingresa la letra de la canción';
+        }
+        return null;
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -277,14 +336,23 @@ class _AddSongScreenState extends ConsumerState<AddSongScreen> {
       );
     }
 
+    if (_isLyricsFullScreen) {
+      return _buildLyricsEditor();
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Agregar Canción'),
+        title: Text(
+          'Agregar Canción',
+          style: AppTextStyles.appBarTitle(context),
+        ),
         actions: [
-          TextButton(
+          IconButton(
             onPressed: _saveSong,
-            child: const Text('Guardar'),
+            icon: const Icon(Icons.save_outlined),
+            tooltip: 'Guardar',
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: _error != null
@@ -292,7 +360,7 @@ class _AddSongScreenState extends ConsumerState<AddSongScreen> {
           : Form(
               key: _formKey,
               child: ListView(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(5),
                 children: [
                   TextFormField(
                     controller: _titleController,
@@ -326,16 +394,8 @@ class _AddSongScreenState extends ConsumerState<AddSongScreen> {
                       return null;
                     },
                   ),
-                  const SizedBox(height: 16),
-                  LyricsInputField(
-                    controller: _lyricsController,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Por favor, ingresa la letra de la canción';
-                      }
-                      return null;
-                    },
-                  ),
+                  const SizedBox(height: 20),
+                  _buildLyricsEditor(),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
                     value: _selectedKey,

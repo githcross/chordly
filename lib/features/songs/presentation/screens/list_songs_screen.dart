@@ -11,6 +11,7 @@ import 'package:chordly/features/songs/providers/songs_provider.dart';
 import 'package:chordly/features/songs/presentation/screens/song_details_screen.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:chordly/features/auth/providers/auth_provider.dart';
+import 'package:chordly/core/theme/text_styles.dart';
 
 class ListSongsScreen extends ConsumerStatefulWidget {
   final GroupModel group;
@@ -37,10 +38,8 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'Canciones del Grupo',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+          'Canciones',
+          style: AppTextStyles.appBarTitle(context),
         ),
         actions: [
           IconButton(
@@ -224,7 +223,7 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
 
   Stream<List<QueryDocumentSnapshot>> _getSongsStream() {
     final user = ref.read(authProvider).value;
-    if (user == null) return Stream.value([]);
+    if (user == null) return const Stream.empty();
 
     // Query para canciones publicadas
     final publishedQuery = FirebaseFirestore.instance
@@ -241,27 +240,20 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
         .where('status', isEqualTo: 'borrador')
         .where('createdBy', isEqualTo: user.uid);
 
-    // Query para canciones archivadas del usuario actual
-    final archivedQuery = FirebaseFirestore.instance
-        .collection('songs')
-        .where('groupId', isEqualTo: widget.group.id)
-        .where('isActive', isEqualTo: false)
-        .where('createdBy', isEqualTo: user.uid);
-
-    // Combinar los resultados de las tres queries
-    return Rx.combineLatest3(
+    // Combinar los streams y ordenar
+    return Rx.combineLatest2(
       publishedQuery.snapshots(),
       draftsQuery.snapshots(),
-      archivedQuery.snapshots(),
-      (QuerySnapshot published, QuerySnapshot drafts, QuerySnapshot archived) {
-        final allDocs = [...published.docs, ...drafts.docs, ...archived.docs];
-        // Ordenar manualmente
+      (QuerySnapshot published, QuerySnapshot drafts) {
+        final allDocs = [...published.docs, ...drafts.docs];
         allDocs.sort((a, b) {
-          final titleA = (a.data() as Map<String, dynamic>)['title'] as String;
-          final titleB = (b.data() as Map<String, dynamic>)['title'] as String;
+          final aData = a.data() as Map<String, dynamic>;
+          final bData = b.data() as Map<String, dynamic>;
+          final aTitle = aData['title'] as String;
+          final bTitle = bData['title'] as String;
           return _ascendingOrder
-              ? titleA.compareTo(titleB)
-              : titleB.compareTo(titleA);
+              ? aTitle.compareTo(bTitle)
+              : bTitle.compareTo(aTitle);
         });
         return allDocs;
       },

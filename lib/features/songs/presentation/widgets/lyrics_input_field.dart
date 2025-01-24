@@ -9,6 +9,8 @@ class LyricsInputField extends StatefulWidget {
   final String? Function(String?)? validator;
   final String? songId;
   final TextStyle? style;
+  final bool isFullScreen;
+  final VoidCallback? onToggleFullScreen;
 
   const LyricsInputField({
     super.key,
@@ -18,6 +20,8 @@ class LyricsInputField extends StatefulWidget {
     this.validator,
     this.songId,
     this.style,
+    this.isFullScreen = false,
+    this.onToggleFullScreen,
   });
 
   @override
@@ -209,8 +213,44 @@ class _LyricsInputFieldState extends State<LyricsInputField> {
 
   @override
   Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              'Letra de la canción',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const Spacer(),
+            IconButton(
+              icon: Icon(
+                widget.isFullScreen ? Icons.fullscreen_exit : Icons.fullscreen,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              onPressed: widget.onToggleFullScreen,
+              tooltip: widget.isFullScreen
+                  ? 'Salir de pantalla completa'
+                  : 'Pantalla completa',
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        widget.isFullScreen
+            ? Expanded(
+                child: _buildTextFormField(),
+              )
+            : SizedBox(
+                height: 200, // Altura fija para modo normal
+                child: _buildTextFormField(),
+              ),
+      ],
+    );
+  }
+
+  Widget _buildTextFormField() {
     return TextFormField(
-      controller: _controller,
+      controller: widget.controller,
       style: widget.style,
       maxLines: null,
       keyboardType: TextInputType.multiline,
@@ -219,7 +259,7 @@ class _LyricsInputFieldState extends State<LyricsInputField> {
         errorText: widget.errorText,
         hintText: 'Escribe la letra con acordes...',
         helperText:
-            'Formato: Selecciona nota para insertar o escribe la nota entre parentecis',
+            'Formato: Selecciona nota para insertar o escribe la nota entre paréntesis',
         helperMaxLines: 2,
         border: const OutlineInputBorder(),
         suffixIcon: IconButton(

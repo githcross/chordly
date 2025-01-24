@@ -6,6 +6,7 @@ import 'package:chordly/features/groups/presentation/screens/group_info_screen.d
 import 'package:chordly/features/songs/presentation/screens/add_song_screen.dart';
 import 'package:chordly/features/songs/presentation/screens/list_songs_screen.dart';
 import 'package:chordly/features/songs/providers/songs_provider.dart';
+import 'package:chordly/core/theme/text_styles.dart';
 
 class HomeGroupScreen extends ConsumerWidget {
   final GroupModel group;
@@ -23,9 +24,7 @@ class HomeGroupScreen extends ConsumerWidget {
       appBar: AppBar(
         title: Text(
           group.name,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+          style: AppTextStyles.appBarTitle(context),
         ),
         actions: [
           IconButton(
@@ -191,16 +190,12 @@ class _HorizontalCategoryCard extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                      style: AppTextStyles.itemTitle(context),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       'Toca para ver detalles',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Theme.of(context).colorScheme.secondary,
-                          ),
+                      style: AppTextStyles.subtitle(context),
                     ),
                   ],
                 ),

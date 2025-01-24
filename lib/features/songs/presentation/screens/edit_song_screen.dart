@@ -39,6 +39,7 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
   String? _error;
   late Future<DocumentSnapshot> _songFuture;
   late Map<String, dynamic> _songData;
+  bool _isLyricsFullScreen = false;
 
   @override
   void initState() {
@@ -233,6 +234,66 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
     );
   }
 
+  Widget _buildLyricsEditor() {
+    if (_isLyricsFullScreen) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Editar Letra'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => setState(() => _isLyricsFullScreen = false),
+          ),
+          actions: [
+            IconButton(
+              onPressed: _updateSong,
+              icon: const Icon(Icons.save_outlined),
+              tooltip: 'Guardar',
+            ),
+            const SizedBox(width: 8),
+          ],
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(5.0),
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height,
+            child: LyricsInputField(
+              songId: widget.songId,
+              controller: _lyricsController,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontSize: 14.0,
+                  ),
+              isFullScreen: true,
+              onToggleFullScreen: () =>
+                  setState(() => _isLyricsFullScreen = false),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Por favor, ingresa la letra de la canción';
+                }
+                return null;
+              },
+            ),
+          ),
+        ),
+      );
+    }
+
+    return LyricsInputField(
+      songId: widget.songId,
+      controller: _lyricsController,
+      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            fontSize: 14.0,
+          ),
+      isFullScreen: false,
+      onToggleFullScreen: () => setState(() => _isLyricsFullScreen = true),
+      validator: (value) {
+        if (value == null || value.isEmpty) {
+          return 'Por favor, ingresa la letra de la canción';
+        }
+        return null;
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -249,21 +310,27 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
       );
     }
 
+    if (_isLyricsFullScreen) {
+      return _buildLyricsEditor();
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title:
-            Text('Editar Canción', style: AppTextStyles.appBarTitle(context)),
+        title: Text(
+          'Editar Canción',
+          style: AppTextStyles.appBarTitle(context),
+        ),
         actions: [
-          FilledButton.icon(
+          IconButton(
             onPressed: _updateSong,
-            icon: const Icon(Icons.save),
-            label: Text('Guardar', style: AppTextStyles.buttonText(context)),
+            icon: const Icon(Icons.save_outlined),
+            tooltip: 'Guardar',
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 8),
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(5),
         child: Form(
           key: _formKey,
           child: Column(
@@ -406,25 +473,62 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
                         ))
                     .toList(),
               ),
+              const SizedBox(height: 20),
+              _buildLyricsEditor(),
               const SizedBox(height: 16),
-              LyricsInputField(
-                songId: widget.songId,
-                controller: _lyricsController,
-                style: AppTextStyles.lyrics(context),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Por favor, ingresa la letra de la canción';
-                  }
-                  return null;
-                },
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Estado',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FutureBuilder<DocumentSnapshot>(
+                        future: FirebaseFirestore.instance
+                            .collection('songs')
+                            .doc(widget.songId)
+                            .get(),
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData) {
+                            return const CircularProgressIndicator();
+                          }
+
+                          final songData =
+                              snapshot.data!.data() as Map<String, dynamic>;
+                          final currentStatus = songData['status'] as String;
+                          final isPublished = currentStatus == 'publicado';
+
+                          return SegmentedButton<String>(
+                            segments: [
+                              ButtonSegment<String>(
+                                value: 'borrador',
+                                label: const Text('Borrador'),
+                                enabled: !isPublished,
+                              ),
+                              const ButtonSegment<String>(
+                                value: 'publicado',
+                                label: Text('Publicado'),
+                              ),
+                            ],
+                            selected: {_status},
+                            onSelectionChanged: (Set<String> newSelection) {
+                              setState(() {
+                                _status = newSelection.first;
+                              });
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 16),
-              Text(
-                'Estado',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              _buildStatusSelector(),
             ],
           ),
         ),

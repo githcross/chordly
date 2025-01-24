@@ -216,6 +216,10 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
             },
           ),
         ],
+        title: Text(
+          'Modo Presentación',
+          style: AppTextStyles.appBarTitle(context),
+        ),
       ),
       body: Container(
         color: Colors.black,
@@ -303,7 +307,7 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
                   ],
                 ),
                 body: SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(1),
                   child: _buildInfoPanel(context, songData),
                 ),
                 floatingActionButton: PopupMenuButton(
@@ -352,53 +356,71 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          songData['title'] ?? 'Sin título',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
+        // Contenedor para el encabezado
+        Container(
+          padding: const EdgeInsets.all(16.0),
+          color: Theme.of(context).colorScheme.surface,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                songData['title'] ?? 'Sin título',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
               ),
-        ),
-        const SizedBox(height: 16),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Row(
-                    children: [
-                      Icon(Icons.music_note,
-                          color: Theme.of(context).colorScheme.primary,
-                          size: 24),
-                      const SizedBox(width: 8),
-                      Text(
-                        songData['baseKey'] ?? 'No especificada',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                    ],
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Chip(
+                    avatar: Icon(
+                      Icons.music_note,
+                      color: Theme.of(context).colorScheme.primary,
+                      size: 18,
+                    ),
+                    label: Text(
+                      songData['baseKey'] ?? 'No especificada',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w500,
+                          ),
+                    ),
+                    backgroundColor:
+                        Theme.of(context).colorScheme.surfaceVariant,
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
                   ),
-                ),
-                if (songData['tempo'] != null && songData['tempo'] != 0)
-                  Row(
-                    children: [
-                      Icon(Icons.speed,
-                          color: Theme.of(context).colorScheme.primary,
-                          size: 24),
-                      const SizedBox(width: 8),
-                      Text(
+                  const SizedBox(width: 8),
+                  if (songData['tempo'] != null && songData['tempo'] != 0)
+                    Chip(
+                      avatar: Icon(
+                        Icons.speed,
+                        color: Theme.of(context).colorScheme.primary,
+                        size: 18,
+                      ),
+                      label: Text(
                         '${songData['tempo']} BPM',
-                        style: Theme.of(context).textTheme.titleMedium,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w500,
+                            ),
                       ),
-                    ],
-                  ),
-              ],
-            ),
+                      backgroundColor:
+                          Theme.of(context).colorScheme.surfaceVariant,
+                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                    ),
+                ],
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 16),
+        // Separador visual
+        const Divider(height: 1),
+        // Contenedor para la letra
         Card(
+          margin: EdgeInsets.zero, // Eliminar margen de la Card
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.zero, // Eliminar bordes redondeados
+          ),
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(5.0),
             child: _buildHighlightedLyrics(context),
           ),
         ),
