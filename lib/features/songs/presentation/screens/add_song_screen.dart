@@ -279,14 +279,6 @@ class _AddSongScreenState extends ConsumerState<AddSongScreen> {
             icon: const Icon(Icons.arrow_back),
             onPressed: () => setState(() => _isLyricsFullScreen = false),
           ),
-          actions: [
-            IconButton(
-              onPressed: _saveSong,
-              icon: const Icon(Icons.save_outlined),
-              tooltip: 'Guardar',
-            ),
-            const SizedBox(width: 8),
-          ],
         ),
         body: Padding(
           padding: const EdgeInsets.all(5),
