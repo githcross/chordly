@@ -95,63 +95,17 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
   @override
   void initState() {
     super.initState();
-    _initializeStream();
-    _initMetronome();
-  }
-
-  Future<void> _initializeStream() async {
-    if (widget.songId == null || widget.songId!.isEmpty) {
-      print('Error: songId es null o vacío');
-      setState(() {
-        _songStream = const Stream.empty();
-      });
-      return;
-    }
-
-    // Si no tenemos groupId, intentar obtenerlo de la canción
-    if (widget.groupId == null || widget.groupId!.isEmpty) {
-      try {
-        final songDoc = await FirebaseFirestore.instance
-            .collection('songs')
-            .doc(widget.songId)
-            .get();
-
-        if (songDoc.exists) {
-          final songData = songDoc.data() as Map<String, dynamic>;
-          _resolvedGroupId = songData['groupId'] as String?;
-
-          if (_resolvedGroupId == null || _resolvedGroupId!.isEmpty) {
-            print('Error: No se pudo obtener el groupId de la canción');
-            setState(() {
-              _songStream = const Stream.empty();
-            });
-            return;
-          }
-        } else {
-          print('Error: La canción no existe');
-          setState(() {
-            _songStream = const Stream.empty();
-          });
-          return;
-        }
-      } catch (e) {
-        print('Error al obtener el groupId: $e');
-        setState(() {
-          _songStream = const Stream.empty();
-        });
-        return;
-      }
-    }
-
+    _isInitialized = false;
     _currentIndex = widget.currentIndex ?? 0;
     _pageController = PageController(initialPage: _currentIndex);
 
-    setState(() {
-      _songStream = FirebaseFirestore.instance
-          .collection('songs')
-          .doc(widget.songId)
-          .snapshots();
-    });
+    // Configurar el stream inmediatamente
+    _songStream = FirebaseFirestore.instance
+        .collection('songs')
+        .doc(widget.songId)
+        .snapshots();
+
+    _initMetronome();
   }
 
   Future<void> _initMetronome() async {
@@ -250,7 +204,7 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
       _transposedLyrics = newTransposedLyrics;
     });
 
-    // Actualizar solo lyricsTranspose en Firestore
+    // Actualizar Firestore
     FirebaseFirestore.instance
         .collection('songs')
         .doc(widget.songId)
@@ -273,7 +227,7 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
       _landscapeFontSize = 24.0;
     });
 
-    // Restaurar lyricsTranspose al valor original
+    // Actualizar Firestore
     FirebaseFirestore.instance
         .collection('songs')
         .doc(widget.songId)
@@ -633,20 +587,22 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
         }
 
         final songData = snapshot.data!.data() as Map<String, dynamic>;
-        final newOriginalLyrics = songData['lyrics'] ?? '';
-        final newTransposedLyrics =
-            songData['lyricsTranspose'] ?? newOriginalLyrics;
+        final newLyrics = songData['lyrics'] ?? '';
+        final newTransposedLyrics = songData['lyricsTranspose'] ?? newLyrics;
 
         // Actualizar el estado local cuando los datos cambian
-        if (!_isInitialized || _originalLyrics != newOriginalLyrics) {
-          // Si es la primera vez o si lyrics cambió (edición)
-          _originalLyrics = newOriginalLyrics;
-          _transposedLyrics =
-              newOriginalLyrics; // Usar lyrics después de edición
-          _isInitialized = true;
-        } else if (_transposedLyrics != newTransposedLyrics) {
-          // Si solo cambió lyricsTranspose (transposición)
-          _transposedLyrics = newTransposedLyrics;
+        if (!_isInitialized ||
+            _originalLyrics != newLyrics ||
+            _transposedLyrics != newTransposedLyrics) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() {
+                _originalLyrics = newLyrics;
+                _transposedLyrics = newTransposedLyrics;
+                _isInitialized = true;
+              });
+            }
+          });
         }
 
         return isLandscape

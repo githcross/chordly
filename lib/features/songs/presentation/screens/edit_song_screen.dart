@@ -8,6 +8,7 @@ import 'package:chordly/features/auth/providers/auth_provider.dart';
 import 'package:chordly/core/theme/text_styles.dart';
 import 'package:chordly/core/utils/snackbar_utils.dart';
 import 'package:chordly/features/songs/models/lyric_document.dart';
+import 'package:chordly/features/songs/presentation/screens/song_details_screen.dart';
 
 class EditSongScreen extends ConsumerStatefulWidget {
   final String songId;
@@ -126,12 +127,23 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
       final lyricDoc = LyricDocument.fromInlineText(newLyrics);
       final topFormat = lyricDoc.toTopFormat();
 
+      // Obtener la transposición actual
+      final currentSong = await FirebaseFirestore.instance
+          .collection('songs')
+          .doc(widget.songId)
+          .get();
+      final currentData = currentSong.data() as Map<String, dynamic>;
+      final currentLyrics = currentData['lyrics'] as String?;
+      final currentTransposed = currentData['lyricsTranspose'] as String?;
+
       // Preparar datos de actualización
       final updatedSongData = {
         'title': _titleController.text.trim(),
         'author': _authorController.text.trim(),
         'lyrics': newLyrics,
-        'lyricsTranspose': newLyrics,
+        'lyricsTranspose': currentTransposed == currentLyrics
+            ? newLyrics // Si no había transposición, usar las nuevas lyrics
+            : currentTransposed, // Si había transposición, mantenerla
         'topFormat': topFormat, // Guardar el formato top
         'baseKey': _selectedKey,
         'tags': _selectedTags,
@@ -154,7 +166,18 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
           .update(updatedSongData);
 
       if (!mounted) return;
-      Navigator.pop(context);
+
+      // Recargar la pantalla de detalles
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SongDetailsScreen(
+            songId: widget.songId,
+            groupId: widget.groupId,
+          ),
+        ),
+      );
+
       SnackBarUtils.showSnackBar(
         context,
         message: 'Canción actualizada correctamente',

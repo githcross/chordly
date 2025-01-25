@@ -160,7 +160,8 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
         .collection('songs')
         .where('groupId', isEqualTo: widget.group.id)
         .where('isActive', isEqualTo: true)
-        .where('status', isEqualTo: 'publicado');
+        .where('status', isEqualTo: 'publicado')
+        .snapshots();
 
     // Query para borradores del usuario actual
     final draftsQuery = FirebaseFirestore.instance
@@ -168,15 +169,25 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
         .where('groupId', isEqualTo: widget.group.id)
         .where('isActive', isEqualTo: true)
         .where('status', isEqualTo: 'borrador')
-        .where('createdBy', isEqualTo: user.uid);
+        .where('createdBy', isEqualTo: user.uid)
+        .snapshots();
 
     // Combinar los streams y ordenar
     return Rx.combineLatest2(
-      publishedQuery.snapshots(),
-      draftsQuery.snapshots(),
+      publishedQuery,
+      draftsQuery,
       (QuerySnapshot published, QuerySnapshot drafts) {
         final allDocs = [...published.docs, ...drafts.docs];
-        allDocs.sort((a, b) {
+        // Filtrar por tags si hay seleccionados
+        final filteredDocs = _selectedTags.isEmpty
+            ? allDocs
+            : allDocs.where((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                final tags = List<String>.from(data['tags'] ?? []);
+                return _selectedTags.every((tag) => tags.contains(tag));
+              }).toList();
+
+        filteredDocs.sort((a, b) {
           final aData = a.data() as Map<String, dynamic>;
           final bData = b.data() as Map<String, dynamic>;
           final aTitle = aData['title'] as String;
@@ -185,7 +196,7 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
               ? aTitle.compareTo(bTitle)
               : bTitle.compareTo(aTitle);
         });
-        return allDocs;
+        return filteredDocs;
       },
     );
   }

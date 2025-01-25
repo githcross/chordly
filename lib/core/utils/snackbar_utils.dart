@@ -10,18 +10,18 @@ class SnackBarUtils {
 
     final backgroundColor = isError
         ? (isDark
-            ? Colors.redAccent[700]
-            : const Color.fromARGB(255, 255, 255, 255))
+            ? const Color.fromARGB(119, 213, 0, 0)
+            : const Color.fromARGB(255, 255, 0, 0))
         : (isDark
             ? Colors.redAccent[700]
-            : const Color.fromARGB(255, 255, 255, 255));
+            : const Color.fromARGB(255, 249, 0, 0));
 
     final textColor = isDark
         ? const Color.fromARGB(255, 0, 0, 0)
         : (isError
-            ? const Color.fromARGB(255, 255, 0, 0)
+            ? const Color.fromARGB(113, 0, 0, 0)
             : const Color.fromARGB(
-                255, 251, 251, 251)); // Color del texto siempre visible
+                255, 0, 0, 0)); // Color del texto siempre visible
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
