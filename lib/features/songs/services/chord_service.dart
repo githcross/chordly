@@ -265,26 +265,101 @@ class ChordService {
       'Am',
       'A#m',
       'Bm'
+    ],
+    'septima': [
+      'C7',
+      'C#7',
+      'D7',
+      'D#7',
+      'E7',
+      'F7',
+      'F#7',
+      'G7',
+      'G#7',
+      'A7',
+      'A#7',
+      'B7'
+    ],
+    'menor_septima': [
+      'Cm7',
+      'C#m7',
+      'Dm7',
+      'D#m7',
+      'Em7',
+      'Fm7',
+      'F#m7',
+      'Gm7',
+      'G#m7',
+      'Am7',
+      'A#m7',
+      'Bm7'
     ]
   };
 
   String transposeUp(String chord) {
-    for (var sequence in _noteSequence.values) {
+    // Extraer la nota base y los modificadores
+    final baseNote = _extractBaseNote(chord);
+    final modifiers = chord.substring(baseNote.length);
+
+    // Encontrar la secuencia correcta basada en los modificadores
+    final sequence = _getSequenceForChord(chord);
+    if (sequence != null) {
       final index = sequence.indexOf(chord);
       if (index != -1) {
         return sequence[(index + 1) % sequence.length];
       }
     }
+
+    // Si no encontramos una secuencia específica, transponer solo la nota base
+    final majorSequence = _noteSequence['mayores']!;
+    final baseIndex = majorSequence.indexOf(baseNote);
+    if (baseIndex != -1) {
+      final newBase = majorSequence[(baseIndex + 1) % majorSequence.length];
+      return newBase + modifiers;
+    }
+
     return chord;
   }
 
   String transposeDown(String chord) {
-    for (var sequence in _noteSequence.values) {
+    // Extraer la nota base y los modificadores
+    final baseNote = _extractBaseNote(chord);
+    final modifiers = chord.substring(baseNote.length);
+
+    // Encontrar la secuencia correcta basada en los modificadores
+    final sequence = _getSequenceForChord(chord);
+    if (sequence != null) {
       final index = sequence.indexOf(chord);
       if (index != -1) {
         return sequence[(index - 1 + sequence.length) % sequence.length];
       }
     }
+
+    // Si no encontramos una secuencia específica, transponer solo la nota base
+    final majorSequence = _noteSequence['mayores']!;
+    final baseIndex = majorSequence.indexOf(baseNote);
+    if (baseIndex != -1) {
+      final newBase = majorSequence[
+          (baseIndex - 1 + majorSequence.length) % majorSequence.length];
+      return newBase + modifiers;
+    }
+
     return chord;
+  }
+
+  String _extractBaseNote(String chord) {
+    if (chord.length >= 2 && chord[1] == '#') {
+      return chord.substring(0, 2);
+    }
+    return chord.substring(0, 1);
+  }
+
+  List<String>? _getSequenceForChord(String chord) {
+    if (chord.endsWith('m7')) return _noteSequence['menor_septima'];
+    if (chord.endsWith('7')) return _noteSequence['septima'];
+    if (chord.endsWith('m')) return _noteSequence['menores'];
+    if (_noteSequence['mayores']!.contains(chord))
+      return _noteSequence['mayores'];
+    return null;
   }
 }
