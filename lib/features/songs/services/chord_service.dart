@@ -296,15 +296,32 @@ class ChordService {
     ]
   };
 
+  // Mapeo de equivalencias enarmónicas
+  final Map<String, String> _enharmonicMap = {
+    'Bb': 'A#',
+    'Db': 'C#',
+    'Eb': 'D#',
+    'Gb': 'F#',
+    'Ab': 'G#',
+    'Cb': 'B',
+    'E#': 'F',
+    'B#': 'C',
+    'Fb': 'E',
+  };
+
   String transposeUp(String chord) {
     // Extraer la nota base y los modificadores
     final baseNote = _extractBaseNote(chord);
     final modifiers = chord.substring(baseNote.length);
 
+    // Normalizar la nota base usando equivalencias enarmónicas
+    final normalizedBase = _normalizeNote(baseNote);
+    final normalizedChord = normalizedBase + modifiers;
+
     // Encontrar la secuencia correcta basada en los modificadores
-    final sequence = _getSequenceForChord(chord);
+    final sequence = _getSequenceForChord(normalizedChord);
     if (sequence != null) {
-      final index = sequence.indexOf(chord);
+      final index = sequence.indexOf(normalizedChord);
       if (index != -1) {
         return sequence[(index + 1) % sequence.length];
       }
@@ -312,7 +329,7 @@ class ChordService {
 
     // Si no encontramos una secuencia específica, transponer solo la nota base
     final majorSequence = _noteSequence['mayores']!;
-    final baseIndex = majorSequence.indexOf(baseNote);
+    final baseIndex = majorSequence.indexOf(normalizedBase);
     if (baseIndex != -1) {
       final newBase = majorSequence[(baseIndex + 1) % majorSequence.length];
       return newBase + modifiers;
@@ -326,10 +343,14 @@ class ChordService {
     final baseNote = _extractBaseNote(chord);
     final modifiers = chord.substring(baseNote.length);
 
+    // Normalizar la nota base usando equivalencias enarmónicas
+    final normalizedBase = _normalizeNote(baseNote);
+    final normalizedChord = normalizedBase + modifiers;
+
     // Encontrar la secuencia correcta basada en los modificadores
-    final sequence = _getSequenceForChord(chord);
+    final sequence = _getSequenceForChord(normalizedChord);
     if (sequence != null) {
-      final index = sequence.indexOf(chord);
+      final index = sequence.indexOf(normalizedChord);
       if (index != -1) {
         return sequence[(index - 1 + sequence.length) % sequence.length];
       }
@@ -337,7 +358,7 @@ class ChordService {
 
     // Si no encontramos una secuencia específica, transponer solo la nota base
     final majorSequence = _noteSequence['mayores']!;
-    final baseIndex = majorSequence.indexOf(baseNote);
+    final baseIndex = majorSequence.indexOf(normalizedBase);
     if (baseIndex != -1) {
       final newBase = majorSequence[
           (baseIndex - 1 + majorSequence.length) % majorSequence.length];
@@ -348,17 +369,23 @@ class ChordService {
   }
 
   String _extractBaseNote(String chord) {
-    if (chord.length >= 2 && chord[1] == '#') {
-      return chord.substring(0, 2);
+    if (chord.length >= 2) {
+      if (chord[1] == '#' || chord[1] == 'b') {
+        return chord.substring(0, 2);
+      }
     }
     return chord.substring(0, 1);
+  }
+
+  String _normalizeNote(String note) {
+    return _enharmonicMap[note] ?? note;
   }
 
   List<String>? _getSequenceForChord(String chord) {
     if (chord.endsWith('m7')) return _noteSequence['menor_septima'];
     if (chord.endsWith('7')) return _noteSequence['septima'];
     if (chord.endsWith('m')) return _noteSequence['menores'];
-    if (_noteSequence['mayores']!.contains(chord))
+    if (_noteSequence['mayores']!.contains(_extractBaseNote(chord)))
       return _noteSequence['mayores'];
     return null;
   }
