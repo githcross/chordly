@@ -17,6 +17,7 @@ import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class ListSongsScreen extends ConsumerStatefulWidget {
   final GroupModel group;
@@ -139,119 +140,7 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
                   );
                 }
 
-                return ListView.builder(
-                  itemCount: songs.length,
-                  itemBuilder: (context, index) {
-                    final song = songs[index];
-                    final data = song.data() as Map<String, dynamic>;
-                    final isSelected = _selectedSongs.contains(song.id);
-
-                    return Dismissible(
-                      key: Key(song.id),
-                      direction: DismissDirection.endToStart,
-                      confirmDismiss: (direction) async {
-                        return await showDialog(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text('Confirmar eliminación'),
-                            content: Text(
-                                '¿Estás seguro de que quieres eliminar "${data['title']}"?'),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context, false),
-                                child: const Text('CANCELAR'),
-                              ),
-                              TextButton(
-                                onPressed: () => Navigator.pop(context, true),
-                                child: const Text('ELIMINAR'),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                      onDismissed: (direction) async {
-                        _lastDeletedSongId = song.id;
-                        _lastDeletedSongTitle = data['title'];
-
-                        await FirebaseFirestore.instance
-                            .collection('songs')
-                            .doc(song.id)
-                            .update({'isActive': false});
-
-                        _showDeleteBanner(data['title']);
-                      },
-                      background: Container(
-                        color: Theme.of(context).colorScheme.error,
-                        alignment: Alignment.centerRight,
-                        padding: const EdgeInsets.only(right: 16),
-                        child: Icon(
-                          Icons.delete_outline,
-                          color: Theme.of(context).colorScheme.onError,
-                        ),
-                      ),
-                      child: ListTile(
-                        leading: _isSelectionMode
-                            ? Checkbox(
-                                value: isSelected,
-                                onChanged: (value) {
-                                  setState(() {
-                                    if (value!) {
-                                      _selectedSongs.add(song.id);
-                                    } else {
-                                      _selectedSongs.remove(song.id);
-                                    }
-                                  });
-                                },
-                              )
-                            : null,
-                        title: Text(
-                          data['title'] as String,
-                          style:
-                              Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                        ),
-                        subtitle: Text(
-                          data['author'] as String? ?? '',
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyMedium
-                              ?.copyWith(
-                                color: Theme.of(context).colorScheme.primary,
-                                fontWeight: FontWeight.w500,
-                              ),
-                        ),
-                        onTap: _isSelectionMode
-                            ? () {
-                                setState(() {
-                                  if (isSelected) {
-                                    _selectedSongs.remove(song.id);
-                                  } else {
-                                    _selectedSongs.add(song.id);
-                                  }
-                                });
-                              }
-                            : () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => SongDetailsScreen(
-                                      songId: song.id,
-                                      groupId: widget.group.id,
-                                    ),
-                                  ),
-                                ),
-                        onLongPress: !_isSelectionMode
-                            ? () {
-                                setState(() {
-                                  _isSelectionMode = true;
-                                  _selectedSongs.add(song.id);
-                                });
-                              }
-                            : null,
-                      ),
-                    );
-                  },
-                );
+                return _buildSongList(songs);
               },
             ),
           ),
@@ -584,5 +473,165 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
   void dispose() {
     _overlayEntry?.remove();
     super.dispose();
+  }
+
+  // Agregar stream para el rol del usuario
+  Stream<GroupRole> _getUserRole() {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return Stream.value(GroupRole.member);
+
+    return FirebaseFirestore.instance
+        .collection('groups')
+        .doc(widget.group.id)
+        .collection('memberships')
+        .doc(userId)
+        .snapshots()
+        .map((snapshot) {
+      if (!snapshot.exists) return GroupRole.member;
+
+      // Convertir string a GroupRole de forma segura
+      final roleStr = snapshot.data()?['role'] as String? ?? 'member';
+      switch (roleStr.toLowerCase()) {
+        case 'admin':
+          return GroupRole.admin;
+        case 'editor':
+          return GroupRole.editor;
+        default:
+          return GroupRole.member;
+      }
+    });
+  }
+
+  Widget _buildSongList(List<QueryDocumentSnapshot> songs) {
+    return StreamBuilder<GroupRole>(
+      stream: _getUserRole(),
+      builder: (context, roleSnapshot) {
+        final userRole = roleSnapshot.data ?? GroupRole.member;
+        final canDelete =
+            userRole == GroupRole.admin || userRole == GroupRole.editor;
+
+        return ListView.builder(
+          itemCount: songs.length,
+          itemBuilder: (context, index) {
+            final songData = songs[index].data() as Map<String, dynamic>;
+            final songId = songs[index].id;
+
+            return Dismissible(
+              key: Key(songId),
+              direction: canDelete
+                  ? DismissDirection.endToStart
+                  : DismissDirection.none,
+              background: Container(
+                color: Colors.red,
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.only(right: 16),
+                child: const Icon(Icons.delete, color: Colors.white),
+              ),
+              confirmDismiss: canDelete
+                  ? (direction) async {
+                      return await showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Confirmar eliminación'),
+                          content: Text(
+                              '¿Estás seguro de que quieres eliminar "${songData['title']}"?'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('Cancelar'),
+                            ),
+                            FilledButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text('Eliminar'),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                  : null,
+              onDismissed: canDelete
+                  ? (direction) async {
+                      _lastDeletedSongId = songId;
+                      _lastDeletedSongTitle = songData['title'];
+
+                      await FirebaseFirestore.instance
+                          .collection('songs')
+                          .doc(songId)
+                          .update({'isActive': false});
+
+                      if (mounted) {
+                        _showDeleteBanner(_lastDeletedSongTitle!);
+                      }
+                    }
+                  : null,
+              child: Card(
+                elevation: 0,
+                margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: ListTile(
+                  title: Text(
+                    songData['title'],
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.2,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                  ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        songData['author'] ?? '',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(context).colorScheme.secondary,
+                            ),
+                      ),
+                      if (songData['baseKey'] != null) ...[
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.music_note,
+                              size: 16,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .primary
+                                  .withOpacity(0.7),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              songData['baseKey'],
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .primary
+                                        .withOpacity(0.7),
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => SongDetailsScreen(
+                          songId: songId,
+                          groupId: widget.group.id,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 }

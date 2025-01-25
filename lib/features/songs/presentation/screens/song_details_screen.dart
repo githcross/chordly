@@ -9,10 +9,45 @@ import 'package:chordly/core/utils/snackbar_utils.dart';
 import 'package:chordly/features/songs/presentation/screens/teleprompter_screen.dart';
 import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:chordly/core/models/group_role.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/rendering.dart';
+import 'dart:ui'; // Agregar este import para ImageFilter
 
-class SongDetailsScreen extends StatefulWidget {
-  final String songId;
-  final String groupId;
+class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
+  final double minHeight;
+  final double maxHeight;
+  final Widget child;
+
+  _SliverAppBarDelegate({
+    required this.minHeight,
+    required this.maxHeight,
+    required this.child,
+  });
+
+  @override
+  double get minExtent => minHeight;
+
+  @override
+  double get maxExtent => maxHeight;
+
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return SizedBox.expand(child: child);
+  }
+
+  @override
+  bool shouldRebuild(_SliverAppBarDelegate oldDelegate) {
+    return maxHeight != oldDelegate.maxHeight ||
+        minHeight != oldDelegate.minHeight ||
+        child != oldDelegate.child;
+  }
+}
+
+class SongDetailsScreen extends ConsumerStatefulWidget {
+  final String? songId;
+  final String? groupId;
   final List<String>? playlistSongs;
   final int? currentIndex;
 
@@ -25,13 +60,14 @@ class SongDetailsScreen extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  State<SongDetailsScreen> createState() => _SongDetailsScreenState();
+  ConsumerState<SongDetailsScreen> createState() => _SongDetailsScreenState();
 }
 
-class _SongDetailsScreenState extends State<SongDetailsScreen> {
-  late Stream<DocumentSnapshot> _songStream;
-  late String _originalLyrics;
-  late String _transposedLyrics;
+class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
+  Stream<DocumentSnapshot> _songStream = const Stream.empty();
+  String? _resolvedGroupId;
+  String _originalLyrics = '';
+  String _transposedLyrics = '';
   final ChordService _chordService = ChordService();
   final TransformationController _transformationController =
       TransformationController();
@@ -50,6 +86,7 @@ class _SongDetailsScreenState extends State<SongDetailsScreen> {
   bool _isPlayingMetronome = false;
   int? _soundId;
   int? _lastBeatTime;
+  int _currentBpm = 0;
 
   // Agregar getter para isLandscape
   bool get isLandscape =>
@@ -58,13 +95,63 @@ class _SongDetailsScreenState extends State<SongDetailsScreen> {
   @override
   void initState() {
     super.initState();
+    _initializeStream();
+    _initMetronome();
+  }
+
+  Future<void> _initializeStream() async {
+    if (widget.songId == null || widget.songId!.isEmpty) {
+      print('Error: songId es null o vacío');
+      setState(() {
+        _songStream = const Stream.empty();
+      });
+      return;
+    }
+
+    // Si no tenemos groupId, intentar obtenerlo de la canción
+    if (widget.groupId == null || widget.groupId!.isEmpty) {
+      try {
+        final songDoc = await FirebaseFirestore.instance
+            .collection('songs')
+            .doc(widget.songId)
+            .get();
+
+        if (songDoc.exists) {
+          final songData = songDoc.data() as Map<String, dynamic>;
+          _resolvedGroupId = songData['groupId'] as String?;
+
+          if (_resolvedGroupId == null || _resolvedGroupId!.isEmpty) {
+            print('Error: No se pudo obtener el groupId de la canción');
+            setState(() {
+              _songStream = const Stream.empty();
+            });
+            return;
+          }
+        } else {
+          print('Error: La canción no existe');
+          setState(() {
+            _songStream = const Stream.empty();
+          });
+          return;
+        }
+      } catch (e) {
+        print('Error al obtener el groupId: $e');
+        setState(() {
+          _songStream = const Stream.empty();
+        });
+        return;
+      }
+    }
+
     _currentIndex = widget.currentIndex ?? 0;
     _pageController = PageController(initialPage: _currentIndex);
-    _songStream = FirebaseFirestore.instance
-        .collection('songs')
-        .doc(widget.songId)
-        .snapshots();
-    _initMetronome();
+
+    setState(() {
+      _songStream = FirebaseFirestore.instance
+          .collection('songs')
+          .doc(widget.songId)
+          .snapshots();
+    });
   }
 
   Future<void> _initMetronome() async {
@@ -97,8 +184,7 @@ class _SongDetailsScreenState extends State<SongDetailsScreen> {
     final textColor = isLandscape
         ? Colors.white
         : Theme.of(context).textTheme.bodyLarge?.color;
-    final chordColor = isLandscape ? Colors.lightBlue : Colors.lightBlueAccent;
-
+    final chordColor = isLandscape ? Colors.lightBlue.shade300 : Colors.blue;
     final actualFontSize = fontSize ?? _fontSize;
 
     final chordRegex = RegExp(r'\(([^)]+)\)');
@@ -290,58 +376,158 @@ class _SongDetailsScreenState extends State<SongDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Si no viene de una playlist, mostrar vista normal
-    if (widget.playlistSongs == null) {
-      return isLandscape
-          ? _buildLandscapeContent(context, {})
-          : _buildSingleSongView();
-    }
+    return StreamBuilder<DocumentSnapshot>(
+      stream: _songStream,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          print('Error en StreamBuilder: ${snapshot.error}');
+          return _buildErrorScreen('Error al cargar la canción');
+        }
 
-    // Vista con lista lateral para playlist
-    return Scaffold(
-      body: Row(
-        children: [
-          // Lista lateral de canciones (solo en tablets o pantallas anchas)
-          if (MediaQuery.of(context).size.width > 600)
-            SizedBox(
-              width: 300,
-              child: Material(
-                elevation: 4,
-                child: Column(
+        if (!snapshot.hasData) {
+          return const Scaffold(
+            body: Center(
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+
+        if (!snapshot.data!.exists) {
+          return _buildErrorScreen('La canción no existe o fue eliminada');
+        }
+
+        final songData = snapshot.data!.data() as Map<String, dynamic>;
+
+        // Inicializar las letras cuando se carga el documento
+        if (!_isInitialized) {
+          _originalLyrics = songData['lyrics'] ?? '';
+          _transposedLyrics =
+              songData['lyricsTranspose'] ?? songData['lyrics'] ?? '';
+          _isInitialized = true;
+        }
+
+        return StreamBuilder<GroupRole>(
+          stream: _getUserRole(),
+          builder: (context, roleSnapshot) {
+            final userRole = roleSnapshot.data ?? GroupRole.member;
+            final canEdit =
+                userRole == GroupRole.admin || userRole == GroupRole.editor;
+
+            return Scaffold(
+              backgroundColor: isLandscape ? Colors.black : null,
+              appBar:
+                  isLandscape ? null : _buildAppBar(context, songData, canEdit),
+              body: Stack(
+                children: [
+                  // Contenido principal
+                  _buildSongContent(songData),
+
+                  // Controles flotantes
+                  if (isLandscape)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: _buildLandscapeControls(),
+                    ),
+                  if (!isLandscape && _isPlayingMetronome)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: _buildBpmControls(),
+                    ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar(
+    BuildContext context,
+    Map<String, dynamic> songData,
+    bool canEdit,
+  ) {
+    return AppBar(
+      title: Text(songData['title'] ?? 'Sin título'),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.arrow_upward),
+          tooltip: 'Subir medio tono',
+          onPressed: () => _transposeChords(true),
+        ),
+        IconButton(
+          icon: const Icon(Icons.arrow_downward),
+          tooltip: 'Bajar medio tono',
+          onPressed: () => _transposeChords(false),
+        ),
+        IconButton(
+          icon: const Icon(Icons.slideshow),
+          tooltip: 'Telepromter',
+          onPressed: () => _showTeleprompterMode(context, songData),
+        ),
+        PopupMenuButton<String>(
+          icon: const Icon(Icons.more_vert),
+          onSelected: (value) {
+            switch (value) {
+              case 'edit':
+                if (canEdit) {
+                  _navigateToEdit(context);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('No tienes permisos para editar canciones'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+                break;
+              case 'restore':
+                _restoreOriginalChords();
+                break;
+              case 'info':
+                _showInfoDialog(context, songData);
+                break;
+            }
+          },
+          itemBuilder: (context) => [
+            if (canEdit)
+              const PopupMenuItem(
+                value: 'edit',
+                child: Row(
                   children: [
-                    AppBar(
-                      title: const Text('Canciones'),
-                      automaticallyImplyLeading: false,
-                    ),
-                    Expanded(
-                      child: _buildSongsList(),
-                    ),
+                    Icon(Icons.edit),
+                    SizedBox(width: 8),
+                    Text('Editar'),
                   ],
                 ),
               ),
+            const PopupMenuItem(
+              value: 'restore',
+              child: Row(
+                children: [
+                  Icon(Icons.refresh),
+                  SizedBox(width: 8),
+                  Text('Restaurar acordes'),
+                ],
+              ),
             ),
-          // Vista principal de la canción
-          Expanded(
-            child: PageView.builder(
-              controller: _pageController,
-              itemCount: widget.playlistSongs!.length,
-              onPageChanged: (index) {
-                setState(() => _currentIndex = index);
-              },
-              itemBuilder: (context, index) {
-                return _buildSongView(widget.playlistSongs![index]);
-              },
+            const PopupMenuItem(
+              value: 'info',
+              child: Row(
+                children: [
+                  Icon(Icons.info),
+                  SizedBox(width: 8),
+                  Text('Información'),
+                ],
+              ),
             ),
-          ),
-        ],
-      ),
-      // Mostrar botón de lista en dispositivos móviles
-      floatingActionButton: MediaQuery.of(context).size.width <= 600
-          ? FloatingActionButton(
-              child: const Icon(Icons.list),
-              onPressed: () => _showSongsBottomSheet(context),
-            )
-          : null,
+          ],
+        ),
+      ],
     );
   }
 
@@ -555,10 +741,6 @@ class _SongDetailsScreenState extends State<SongDetailsScreen> {
 
         return Scaffold(
           appBar: AppBar(
-            title: Text(
-              songData['title'] ?? 'Detalles de la Canción',
-              style: AppTextStyles.appBarTitle(context),
-            ),
             actions: [
               IconButton(
                 icon: const Icon(Icons.present_to_all),
@@ -593,15 +775,6 @@ class _SongDetailsScreenState extends State<SongDetailsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          songData['title'] ?? 'Sin título',
-                          style: Theme.of(context)
-                              .textTheme
-                              .headlineSmall
-                              ?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
-                        ),
                         const SizedBox(height: 12),
                         Row(
                           children: [
@@ -668,13 +841,6 @@ class _SongDetailsScreenState extends State<SongDetailsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                songData['title'] ?? 'Sin título',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-              const SizedBox(height: 12),
               Row(
                 children: [
                   Chip(
@@ -861,30 +1027,28 @@ class _SongDetailsScreenState extends State<SongDetailsScreen> {
     );
   }
 
-  void _toggleMetronome(int bpm) async {
+  void _toggleMetronome(int bpm) {
     if (_isPlayingMetronome) {
       _stopMetronome();
     } else {
+      _currentBpm = bpm;
       _startMetronome(bpm);
     }
   }
 
   void _startMetronome(int bpm) {
     try {
-      // Cancelar timer existente
+      _currentBpm = bpm;
       _metronomeTimer?.cancel();
 
-      // Calcular intervalo en milisegundos
       final interval = (60000 / bpm).round();
       print('Iniciando metrónomo a $bpm BPM (intervalo: $interval ms)');
 
-      // Reproducir primer beat
       _metronome.stop();
       _metronome.resume();
 
       setState(() => _isPlayingMetronome = true);
 
-      // Iniciar timer para los siguientes beats
       _metronomeTimer = Timer.periodic(Duration(milliseconds: interval), (_) {
         if (_isPlayingMetronome) {
           _metronome.stop();
@@ -943,8 +1107,8 @@ class _SongDetailsScreenState extends State<SongDetailsScreen> {
       context,
       MaterialPageRoute(
         builder: (context) => EditSongScreen(
-          songId: widget.songId,
-          groupId: widget.groupId,
+          songId: widget.songId!,
+          groupId: widget.groupId!,
         ),
       ),
     );
@@ -1065,6 +1229,270 @@ class _SongDetailsScreenState extends State<SongDetailsScreen> {
           lyrics: _transposedLyrics,
           playlistSongs: widget.playlistSongs,
           currentIndex: _currentIndex,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSongContent(Map<String, dynamic> songData) {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      color: isLandscape ? Colors.black : null,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          if (!isLandscape)
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _SliverAppBarDelegate(
+                minHeight: 48,
+                maxHeight: 48,
+                child: Container(
+                  color:
+                      Theme.of(context).colorScheme.surface.withOpacity(0.95),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: Row(
+                    children: [
+                      Chip(
+                        visualDensity: VisualDensity.compact,
+                        avatar: Icon(
+                          Icons.music_note,
+                          color: Theme.of(context).colorScheme.primary,
+                          size: 16,
+                        ),
+                        label: Text(
+                          songData['baseKey'] ?? 'No especificada',
+                          style:
+                              Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                        ),
+                        backgroundColor:
+                            Theme.of(context).colorScheme.surfaceVariant,
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                      ),
+                      const SizedBox(width: 8),
+                      if (songData['tempo'] != null &&
+                          songData['tempo'] is int &&
+                          songData['tempo'] > 0)
+                        _buildBpmButton(context, songData['tempo'] as int),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          SliverToBoxAdapter(
+            child: Container(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: isLandscape ? 16 : 0,
+                bottom: isLandscape
+                    ? 96
+                    : _isPlayingMetronome
+                        ? 96
+                        : 16,
+              ),
+              child: _buildHighlightedLyrics(
+                context,
+                isLandscape: isLandscape,
+                fontSize: isLandscape ? _landscapeFontSize : _fontSize,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBpmControls() {
+    if (!_isPlayingMetronome) return const SizedBox.shrink();
+
+    return SafeArea(
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: Container(
+          margin: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface.withOpacity(0.9),
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.remove),
+                onPressed: () {
+                  final newBpm = _currentBpm - 5;
+                  if (newBpm > 0) {
+                    _startMetronome(newBpm);
+                  }
+                },
+              ),
+              Text(
+                '$_currentBpm BPM',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.add),
+                onPressed: () => _startMetronome(_currentBpm + 5),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLandscapeControls() {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.7),
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Controles de tonalidad
+              IconButton(
+                icon: const Icon(Icons.arrow_downward, color: Colors.white),
+                onPressed: () => _transposeChords(false),
+              ),
+              IconButton(
+                icon: const Icon(Icons.arrow_upward, color: Colors.white),
+                onPressed: () => _transposeChords(true),
+              ),
+              const VerticalDivider(color: Colors.white30),
+
+              // Controles de fuente
+              IconButton(
+                icon: const Icon(Icons.text_decrease, color: Colors.white),
+                onPressed: () {
+                  setState(() {
+                    _landscapeFontSize =
+                        (_landscapeFontSize - 2).clamp(12.0, 32.0);
+                  });
+                },
+              ),
+              Text(
+                '${_landscapeFontSize.round()}',
+                style: const TextStyle(color: Colors.white),
+              ),
+              IconButton(
+                icon: const Icon(Icons.text_increase, color: Colors.white),
+                onPressed: () {
+                  setState(() {
+                    _landscapeFontSize =
+                        (_landscapeFontSize + 2).clamp(12.0, 32.0);
+                  });
+                },
+              ),
+              const VerticalDivider(color: Colors.white30),
+
+              // Control de BPM
+              if (_currentBpm > 0) ...[
+                IconButton(
+                  icon: Icon(
+                    _isPlayingMetronome ? Icons.stop : Icons.play_arrow,
+                    color: Colors.white,
+                  ),
+                  onPressed: () {
+                    if (_isPlayingMetronome) {
+                      _stopMetronome();
+                    } else {
+                      _startMetronome(_currentBpm);
+                    }
+                  },
+                ),
+                if (_isPlayingMetronome)
+                  Text(
+                    '$_currentBpm BPM',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+              ],
+
+              // Restaurar acordes
+              const VerticalDivider(color: Colors.white30),
+              IconButton(
+                icon: const Icon(Icons.refresh, color: Colors.white),
+                onPressed: _restoreOriginalChords,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Modificar _getUserRole para usar el groupId resuelto
+  Stream<GroupRole> _getUserRole() {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return Stream.value(GroupRole.member);
+
+    final groupId = _resolvedGroupId ?? widget.groupId;
+    if (groupId == null || groupId.isEmpty)
+      return Stream.value(GroupRole.member);
+
+    return FirebaseFirestore.instance
+        .collection('groups')
+        .doc(groupId)
+        .collection('memberships')
+        .doc(userId)
+        .snapshots()
+        .map((snapshot) {
+      if (!snapshot.exists) return GroupRole.member;
+      return GroupRole.fromString(snapshot.data()?['role'] ?? 'member');
+    });
+  }
+
+  Widget _buildErrorScreen(String message) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Error'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.error_outline,
+              size: 48,
+              color: Colors.red,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              style: Theme.of(context).textTheme.titleMedium,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Volver'),
+            ),
+          ],
         ),
       ),
     );

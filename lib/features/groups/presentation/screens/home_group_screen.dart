@@ -28,22 +28,41 @@ class HomeGroupScreen extends ConsumerWidget {
           group.name,
           style: AppTextStyles.appBarTitle(context),
         ),
-        /*actions: [
-          IconButton(
-            icon: const Icon(Icons.info_outline),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => GroupInfoScreen(
-                    group: group,
-                    userRole: userRole,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => GroupInfoScreen(
+                      group: group,
+                      userRole: userRole,
+                    ),
                   ),
+                );
+              },
+              child: Hero(
+                tag: 'group-image-${group.id}',
+                child: CircleAvatar(
+                  radius: 20,
+                  backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
+                  backgroundImage: group.imageUrl != null
+                      ? NetworkImage(group.imageUrl!)
+                      : null,
+                  child: group.imageUrl == null
+                      ? Icon(
+                          Icons.group,
+                          color: Theme.of(context).colorScheme.primary,
+                          size: 24,
+                        )
+                      : null,
                 ),
-              );
-            },
+              ),
+            ),
           ),
-        ],*/
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -65,49 +84,6 @@ class HomeGroupScreen extends ConsumerWidget {
             ),
           ],
         ),
-      ),
-      floatingActionButton: userRole == GroupRole.admin
-          ? FloatingActionButton(
-              onPressed: () => _showAddOptions(context),
-              child: const Icon(Icons.add),
-            )
-          : null,
-    );
-  }
-
-  void _showAddOptions(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            leading: const Icon(Icons.music_note),
-            title: const Text('Agregar Canción'),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => AddSongScreen(groupId: group.id),
-                ),
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.playlist_add),
-            title: const Text('Crear Playlist'),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => PlaylistScreen(groupId: group.id),
-                ),
-              );
-            },
-          ),
-        ],
       ),
     );
   }

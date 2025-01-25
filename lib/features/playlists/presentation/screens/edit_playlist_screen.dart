@@ -162,25 +162,55 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
     );
 
     if (selectedSongs != null && selectedSongs.isNotEmpty) {
-      final songsData = await Future.wait(
-        selectedSongs.map((id) =>
-            FirebaseFirestore.instance.collection('songs').doc(id).get()),
-      );
-
-      setState(() {
-        _songs.addAll(
-          songsData.map((doc) {
-            final data = doc.data() as Map<String, dynamic>;
-            return PlaylistSongItem(
-              songId: doc.id,
-              order: _songs.length,
-              transposedKey: data['baseKey'],
-              notes: '',
-            );
-          }),
-        );
-      });
+      _addSelectedSongs(selectedSongs);
     }
+  }
+
+  void _addSelectedSongs(List<String> selectedSongIds) {
+    // Convertir la lista actual de canciones a un Set de IDs para búsqueda eficiente
+    final existingSongIds = Set<String>.from(
+      widget.playlist.songs.map((song) => song.songId),
+    );
+
+    // Filtrar las canciones seleccionadas para excluir las que ya están en la playlist
+    final newSongIds = selectedSongIds.where(
+      (id) => !existingSongIds.contains(id),
+    );
+
+    if (newSongIds.isEmpty) {
+      // Mostrar mensaje si todas las canciones ya están en la playlist
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Las canciones seleccionadas ya están en la playlist'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    // Agregar solo las canciones nuevas
+    setState(() {
+      widget.playlist.songs.addAll(
+        newSongIds.map(
+          (id) => PlaylistSongItem(
+            songId: id,
+            order: widget.playlist.songs.length,
+            transposedKey: '',
+            notes: '',
+          ),
+        ),
+      );
+    });
+
+    // Mostrar mensaje de éxito
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Se ${newSongIds.length == 1 ? 'agregó' : 'agregaron'} ${newSongIds.length} ${newSongIds.length == 1 ? 'canción' : 'canciones'}',
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   Future<void> _showTransposeDialog(PlaylistSongItem song) async {
