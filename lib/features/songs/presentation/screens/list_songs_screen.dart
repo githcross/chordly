@@ -18,6 +18,8 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:convert';
 
 class ListSongsScreen extends ConsumerStatefulWidget {
   final GroupModel group;
@@ -418,46 +420,148 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
   void _showOptions(BuildContext context) {
     showModalBottomSheet(
       context: context,
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.add),
-              title: const Text('Agregar canción'),
-              onTap: () {
-                Navigator.pop(context);
-                _addSong(context);
-              },
-            ),
-            /*ListTile(
-              leading: const Icon(Icons.share),
-              title: const Text('Compartir lista'),
-              onTap: () {
-                Navigator.pop(context);
-                _shareSongs(_selectedSongs.toList());
-              },
-            ),*/
-            ListTile(
-              leading: const Icon(Icons.delete_outline),
-              title: const Text('Ver canciones eliminadas'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => DeletedSongsScreen(
-                      group: widget.group,
-                    ),
+      builder: (context) => StreamBuilder<GroupRole>(
+        stream: _getUserRole(),
+        builder: (context, snapshot) {
+          final userRole = snapshot.data ?? GroupRole.member;
+          final isAdmin = userRole == GroupRole.admin;
+
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.add),
+                  title: const Text('Agregar canción'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _addSong(context);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.delete_outline),
+                  title: const Text('Ver canciones eliminadas'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => DeletedSongsScreen(
+                          group: widget.group,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                if (isAdmin) ...[
+                  const Divider(),
+                  ListTile(
+                    leading: const Icon(Icons.backup),
+                    title: const Text('Exportar canciones'),
+                    subtitle: const Text('Crear copia de seguridad del grupo'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showBackupDialog();
+                    },
                   ),
-                );
-              },
+                  ListTile(
+                    leading: const Icon(Icons.restore),
+                    title: const Text('Importar canciones'),
+                    subtitle: const Text('Restaurar desde copia de seguridad'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showRestoreDialog();
+                    },
+                  ),
+                ],
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _showBackupDialog() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Crear copia de seguridad'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Se exportarán:'),
+            const SizedBox(height: 8),
+            const Text('• Todas las canciones del grupo'),
+            const Text('• Configuración y formato de cada canción'),
+            const Text('• Acordes y notas'),
+            const SizedBox(height: 16),
+            Text(
+              'El archivo se guardará con el nombre: chordly_backup_${widget.group.name}_${DateFormat('yyyyMMdd').format(DateTime.now())}.json',
+              style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Exportar'),
+          ),
+        ],
       ),
     );
+
+    if (confirm == true) {
+      _exportBackup();
+    }
+  }
+
+  Future<void> _showRestoreDialog() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Restaurar desde backup'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '⚠️ Importante',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Al importar canciones:',
+              style: TextStyle(fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 4),
+            const Text('• Se agregarán como nuevas canciones'),
+            const Text('• No se sobrescribirán las existentes'),
+            const Text('• Se mantendrá el formato original'),
+            const Text('• Se importarán como borradores'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Seleccionar archivo'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      _importBackup();
+    }
   }
 
   void _addSong(BuildContext context) {
@@ -528,26 +632,7 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
                 child: const Icon(Icons.delete, color: Colors.white),
               ),
               confirmDismiss: canDelete
-                  ? (direction) async {
-                      return await showDialog(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: const Text('Confirmar eliminación'),
-                          content: Text(
-                              '¿Estás seguro de que quieres eliminar "${songData['title']}"?'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, false),
-                              child: const Text('Cancelar'),
-                            ),
-                            FilledButton(
-                              onPressed: () => Navigator.pop(context, true),
-                              child: const Text('Eliminar'),
-                            ),
-                          ],
-                        ),
-                      );
-                    }
+                  ? (direction) => _confirmDelete(context, songData, songId)
                   : null,
               onDismissed: canDelete
                   ? (direction) async {
@@ -633,5 +718,299 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
         );
       },
     );
+  }
+
+  Future<void> _exportBackup() async {
+    try {
+      final songs = await FirebaseFirestore.instance
+          .collection('songs')
+          .where('groupId', isEqualTo: widget.group.id)
+          .where('isActive', isEqualTo: true)
+          .get();
+
+      final List<Map<String, dynamic>> backupData = [];
+
+      for (var doc in songs.docs) {
+        final songData = doc.data();
+        // Preservar todos los campos relevantes para el formato
+        final cleanData = {
+          'title': songData['title'],
+          'author': songData['author'],
+          'lyrics': songData['lyrics'],
+          'lyricsTranspose': songData['lyricsTranspose'],
+          'baseKey': songData['baseKey'],
+          'tempo': songData['tempo'],
+          'tags': songData['tags'],
+          'notes': songData['notes'],
+          // Campos adicionales para preservar formato
+          'format': {
+            'spacing': songData['format']?['spacing'] ?? 1.5,
+            'alignment': songData['format']?['alignment'] ?? 'left',
+            'indentation': songData['format']?['indentation'] ?? 0.0,
+            'chordPosition': songData['format']?['chordPosition'] ?? 'above',
+            'fontSize': songData['format']?['fontSize'] ?? 16.0,
+            'chordFontSize': songData['format']?['chordFontSize'] ?? 14.0,
+          },
+          // Metadatos originales
+          'originalCreatedAt':
+              songData['createdAt']?.toDate().toIso8601String(),
+          'originalUpdatedAt':
+              songData['updatedAt']?.toDate().toIso8601String(),
+          'status': songData['status'] ?? 'borrador',
+          'version': songData['version'] ?? 1,
+          // Campos de visualización
+          'displayOptions': {
+            'showChords': songData['displayOptions']?['showChords'] ?? true,
+            'showNotes': songData['displayOptions']?['showNotes'] ?? true,
+            'showTempo': songData['displayOptions']?['showTempo'] ?? true,
+          },
+        };
+        backupData.add(cleanData);
+      }
+
+      // Crear el objeto de backup con metadatos
+      final backup = {
+        'version': '1.0',
+        'timestamp': DateTime.now().toIso8601String(),
+        'groupName': widget.group.name,
+        'groupId': widget.group.id,
+        'totalSongs': songs.docs.length,
+        'songs': backupData,
+      };
+
+      // Convertir a JSON con formato legible (usando dart:convert)
+      final jsonString = JsonEncoder.withIndent('  ').convert(backup);
+
+      // Guardar el archivo
+      final directory = await getApplicationDocumentsDirectory();
+      final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final fileName = 'chordly_backup_${timestamp}.json';
+      final file = File('${directory.path}/$fileName');
+      await file.writeAsString(jsonString);
+
+      // Compartir el archivo
+      await Share.shareFiles(
+        [file.path],
+        text: 'Backup de canciones de ${widget.group.name}',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Backup creado exitosamente'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al crear backup: $e'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _importBackup() async {
+    try {
+      // Abrir selector de archivos
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+
+      if (result == null) return;
+
+      final file = File(result.files.single.path!);
+      final jsonString = await file.readAsString();
+      final backup = jsonDecode(jsonString) as Map<String, dynamic>;
+
+      // Validar versión y formato
+      if (backup['version'] != '1.0') {
+        throw 'Versión de backup no compatible';
+      }
+
+      // Mostrar diálogo de confirmación
+      if (!mounted) return;
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Importar canciones'),
+          content: Text(
+              '¿Deseas importar ${backup['totalSongs']} canciones del grupo "${backup['groupName']}"?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Importar'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm != true) return;
+
+      // Importar canciones preservando el formato
+      final batch = FirebaseFirestore.instance.batch();
+      final songs = backup['songs'] as List;
+
+      for (var songData in songs) {
+        final docRef = FirebaseFirestore.instance.collection('songs').doc();
+        final now = DateTime.now();
+
+        // Preservar el formato original
+        final importedData = {
+          'title': songData['title'],
+          'author': songData['author'],
+          'lyrics': songData['lyrics'],
+          'lyricsTranspose': songData['lyricsTranspose'],
+          'baseKey': songData['baseKey'],
+          'tempo': songData['tempo'],
+          'tags': songData['tags'] ?? [],
+          'notes': songData['notes'],
+          // Preservar formato
+          'format': songData['format'] ??
+              {
+                'spacing': 1.5,
+                'alignment': 'left',
+                'indentation': 0.0,
+                'chordPosition': 'above',
+                'fontSize': 16.0,
+                'chordFontSize': 14.0,
+              },
+          // Preservar opciones de visualización
+          'displayOptions': songData['displayOptions'] ??
+              {
+                'showChords': true,
+                'showNotes': true,
+                'showTempo': true,
+              },
+          // Datos requeridos
+          'groupId': widget.group.id,
+          'isActive': true,
+          'status': songData['status'] ?? 'borrador',
+          'version': songData['version'] ?? 1,
+          // Fechas y usuarios
+          'createdAt': now,
+          'updatedAt': now,
+          'originalCreatedAt': songData['originalCreatedAt'],
+          'originalUpdatedAt': songData['originalUpdatedAt'],
+          'createdBy': FirebaseAuth.instance.currentUser?.uid,
+          'lastUpdatedBy': FirebaseAuth.instance.currentUser?.uid,
+        };
+
+        batch.set(docRef, importedData);
+      }
+
+      await batch.commit();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Canciones importadas exitosamente'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al importar canciones: $e'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<bool> _isSongInPlaylist(String songId) async {
+    try {
+      // Buscar en todas las playlists del grupo
+      final playlistsQuery = await FirebaseFirestore.instance
+          .collection('playlists')
+          .where('groupId', isEqualTo: widget.group.id)
+          .where('isActive', isEqualTo: true)
+          .get();
+
+      for (var playlist in playlistsQuery.docs) {
+        final songs = List<String>.from(playlist.data()['songs'] ?? []);
+        if (songs.contains(songId)) {
+          return true;
+        }
+      }
+      return false;
+    } catch (e) {
+      print('Error al verificar playlists: $e');
+      return false;
+    }
+  }
+
+  Future<bool> _confirmDelete(BuildContext context,
+      Map<String, dynamic> songData, String songId) async {
+    // Verificar si la canción está en alguna playlist
+    final inPlaylist = await _isSongInPlaylist(songId);
+
+    if (inPlaylist) {
+      if (!mounted) return false;
+
+      // Mostrar mensaje de error si la canción está en uso
+      await showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('No se puede eliminar'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                  'La canción "${songData['title']}" está en uso en una o más playlists.'),
+              const SizedBox(height: 8),
+              const Text(
+                'Para eliminarla, primero debes quitarla de todas las playlists.',
+                style: TextStyle(fontSize: 14, color: Colors.grey),
+              ),
+            ],
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Entendido'),
+            ),
+          ],
+        ),
+      );
+      return false;
+    }
+
+    // Si no está en uso, mostrar confirmación normal
+    if (!mounted) return false;
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Confirmar eliminación'),
+            content: Text(
+                '¿Estás seguro de que quieres eliminar "${songData['title']}"?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Eliminar'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
   }
 }

@@ -445,6 +445,49 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
           style: AppTextStyles.appBarTitle(context),
         ),
         actions: [
+          IconButton(
+            icon: Stack(
+              children: [
+                const Icon(Icons.notifications),
+                Consumer(
+                  builder: (context, ref, child) {
+                    final invitations = ref.watch(pendingInvitationsProvider);
+                    return invitations.when(
+                      data: (invitations) {
+                        if (invitations.isEmpty) return const SizedBox();
+                        return Positioned(
+                          right: 0,
+                          top: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 14,
+                              minHeight: 14,
+                            ),
+                            child: Text(
+                              '${invitations.length}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 8,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        );
+                      },
+                      loading: () => const SizedBox(),
+                      error: (_, __) => const SizedBox(),
+                    );
+                  },
+                ),
+              ],
+            ),
+            onPressed: () => _showInvitationsDialog(context),
+          ),
           StreamBuilder<DocumentSnapshot>(
             stream: FirebaseFirestore.instance
                 .collection('users')
@@ -454,20 +497,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               final userData = snapshot.data?.data() as Map<String, dynamic>?;
               final isOnline = userData?['isOnline'] as bool? ?? false;
 
-              return GestureDetector(
-                onTap: () {
-                  if (user?.uid != null) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => ProfileScreen(
-                          userId: user!.uid,
-                          canEdit: true,
-                        ),
-                      ),
-                    );
-                  }
-                },
+              return PopupMenuButton(
+                offset: const Offset(0, 40),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Stack(
@@ -518,51 +549,77 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     ],
                   ),
                 ),
-              );
-            },
-          ),
-          IconButton(
-            icon: Stack(
-              children: [
-                const Icon(Icons.notifications),
-                Consumer(
-                  builder: (context, ref, child) {
-                    final invitations = ref.watch(pendingInvitationsProvider);
-                    return invitations.when(
-                      data: (invitations) {
-                        if (invitations.isEmpty) return const SizedBox();
-                        return Positioned(
-                          right: 0,
-                          top: 0,
-                          child: Container(
-                            padding: const EdgeInsets.all(2),
-                            decoration: BoxDecoration(
-                              color: Colors.red,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            constraints: const BoxConstraints(
-                              minWidth: 14,
-                              minHeight: 14,
-                            ),
-                            child: Text(
-                              '${invitations.length}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 8,
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    child: Row(
+                      children: [
+                        const Icon(Icons.person_outline),
+                        const SizedBox(width: 8),
+                        Text('Mi Perfil',
+                            style: AppTextStyles.subtitle(context)),
+                      ],
+                    ),
+                    onTap: () {
+                      if (user?.uid != null) {
+                        Future.delayed(
+                          const Duration(seconds: 0),
+                          () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ProfileScreen(
+                                userId: user!.uid,
+                                canEdit: true,
                               ),
-                              textAlign: TextAlign.center,
                             ),
                           ),
                         );
-                      },
-                      loading: () => const SizedBox(),
-                      error: (_, __) => const SizedBox(),
-                    );
-                  },
-                ),
-              ],
-            ),
-            onPressed: () => _showInvitationsDialog(context),
+                      }
+                    },
+                  ),
+                  PopupMenuItem(
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info_outline),
+                        const SizedBox(width: 8),
+                        Text('Acerca de',
+                            style: AppTextStyles.subtitle(context)),
+                      ],
+                    ),
+                    onTap: () {
+                      Future.delayed(
+                        const Duration(seconds: 0),
+                        () => showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: Text('Acerca de Chordly',
+                                style: AppTextStyles.dialogTitle(context)),
+                            content: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Versión: 1.0.0',
+                                    style: AppTextStyles.subtitle(context)),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Desarrollado por DevCross\n© 2025 Todos los derechos reservados',
+                                  style: AppTextStyles.metadata(context),
+                                ),
+                              ],
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('Cerrar'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              );
+            },
           ),
           IconButton(
             icon: const Icon(Icons.logout),
