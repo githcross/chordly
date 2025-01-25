@@ -127,7 +127,7 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
       final lyricDoc = LyricDocument.fromInlineText(newLyrics);
       final topFormat = lyricDoc.toTopFormat();
 
-      // Obtener la transposición actual
+      // Obtener el estado actual de la canción
       final currentSong = await FirebaseFirestore.instance
           .collection('songs')
           .doc(widget.songId)
@@ -136,15 +136,21 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
       final currentLyrics = currentData['lyrics'] as String?;
       final currentTransposed = currentData['lyricsTranspose'] as String?;
 
+      // Determinar si hay una transposición activa
+      final hasActiveTransposition =
+          currentTransposed != null && currentTransposed != currentLyrics;
+
       // Preparar datos de actualización
       final updatedSongData = {
         'title': _titleController.text.trim(),
         'author': _authorController.text.trim(),
         'lyrics': newLyrics,
-        'lyricsTranspose': currentTransposed == currentLyrics
-            ? newLyrics // Si no había transposición, usar las nuevas lyrics
-            : currentTransposed, // Si había transposición, mantenerla
-        'topFormat': topFormat, // Guardar el formato top
+        // Si hay una transposición activa, actualizar lyricsTranspose proporcionalmente
+        'lyricsTranspose': hasActiveTransposition
+            ? _updateTransposedLyrics(
+                currentLyrics ?? '', currentTransposed ?? '', newLyrics)
+            : newLyrics,
+        'topFormat': topFormat,
         'baseKey': _selectedKey,
         'tags': _selectedTags,
         'tempo': int.tryParse(_tempoController.text) ?? 0,
@@ -166,17 +172,8 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
           .update(updatedSongData);
 
       if (!mounted) return;
-
-      // Recargar la pantalla de detalles
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => SongDetailsScreen(
-            songId: widget.songId,
-            groupId: widget.groupId,
-          ),
-        ),
-      );
+      Navigator.pop(
+          context, true); // Retornar true para indicar que hubo cambios
 
       SnackBarUtils.showSnackBar(
         context,
@@ -192,6 +189,42 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
         message: 'Error al actualizar: $e',
         isError: true,
       );
+    }
+  }
+
+  // Método para actualizar la letra transpuesta manteniendo la transposición relativa
+  String _updateTransposedLyrics(
+      String oldLyrics, String oldTransposed, String newLyrics) {
+    try {
+      // Si las letras son iguales, no hay cambios que hacer
+      if (oldLyrics == newLyrics) return oldTransposed;
+
+      // Obtener los acordes y su transposición actual
+      final oldChordRegex = RegExp(r'\(([^)]+)\)');
+      final oldMatches = oldChordRegex.allMatches(oldLyrics);
+      final transposedMatches = oldChordRegex.allMatches(oldTransposed);
+
+      // Crear un mapa de transposiciones
+      final transpositionMap = <String, String>{};
+      for (var i = 0; i < oldMatches.length; i++) {
+        final oldChord = oldMatches.elementAt(i).group(1)!;
+        final transposedChord = transposedMatches.elementAt(i).group(1)!;
+        transpositionMap[oldChord] = transposedChord;
+      }
+
+      // Aplicar la misma transposición a los acordes en la nueva letra
+      String result = newLyrics;
+      final newMatches = oldChordRegex.allMatches(newLyrics);
+      for (var match in newMatches) {
+        final chord = match.group(1)!;
+        final transposed = transpositionMap[chord] ?? chord;
+        result = result.replaceFirst('($chord)', '($transposed)');
+      }
+
+      return result;
+    } catch (e) {
+      print('Error al actualizar transposición: $e');
+      return newLyrics; // En caso de error, retornar la letra sin transponer
     }
   }
 

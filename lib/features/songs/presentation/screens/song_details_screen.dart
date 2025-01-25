@@ -1058,8 +1058,8 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     return DateFormat('dd/MM/yyyy HH:mm').format(dateTime);
   }
 
-  void _navigateToEdit(BuildContext context) {
-    Navigator.push(
+  void _navigateToEdit(BuildContext context) async {
+    final result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => EditSongScreen(
@@ -1068,6 +1068,13 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
         ),
       ),
     );
+
+    // Si hubo cambios, forzar actualización del estado
+    if (result == true && mounted) {
+      setState(() {
+        _isInitialized = false; // Esto forzará una recarga de los datos
+      });
+    }
   }
 
   Future<String> _getCreatorName(String userId) async {
