@@ -7,6 +7,7 @@ import 'package:chordly/features/songs/presentation/widgets/lyrics_input_field.d
 import 'package:chordly/features/auth/providers/auth_provider.dart';
 import 'package:chordly/core/theme/text_styles.dart';
 import 'package:chordly/core/utils/snackbar_utils.dart';
+import 'package:chordly/features/songs/models/lyric_document.dart';
 
 class EditSongScreen extends ConsumerStatefulWidget {
   final String songId;
@@ -120,7 +121,10 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
       // Verificar si el usuario actual no es el creador original
       final isOriginalCreator = _songData['creatorUserId'] == currentUser.uid;
 
-      final newLyrics = _lyricsController.text.trim();
+      final newLyrics = _lyricsController.text;
+      // Convertir a formato top usando LyricDocument
+      final lyricDoc = LyricDocument.fromInlineText(newLyrics);
+      final topFormat = lyricDoc.toTopFormat();
 
       // Preparar datos de actualización
       final updatedSongData = {
@@ -128,6 +132,7 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
         'author': _authorController.text.trim(),
         'lyrics': newLyrics,
         'lyricsTranspose': newLyrics,
+        'topFormat': topFormat, // Guardar el formato top
         'baseKey': _selectedKey,
         'tags': _selectedTags,
         'tempo': int.tryParse(_tempoController.text) ?? 0,

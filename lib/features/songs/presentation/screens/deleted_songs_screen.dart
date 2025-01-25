@@ -22,6 +22,129 @@ class _DeletedSongsScreenState extends ConsumerState<DeletedSongsScreen> {
   String? _lastActionSongTitle;
   OverlayEntry? _overlayEntry;
 
+  Future<List<DocumentSnapshot>> _getPlaylistsContainingSong(
+      String songId) async {
+    final playlistsQuery = await FirebaseFirestore.instance
+        .collection('playlists')
+        .where('groupId', isEqualTo: widget.group.id)
+        .where('isActive', isEqualTo: true)
+        .get();
+
+    return playlistsQuery.docs.where((doc) {
+      final data = doc.data() as Map<String, dynamic>?;
+      if (data == null) return false;
+      final songs = List<String>.from(data['songs'] ?? []);
+      return songs.contains(songId);
+    }).toList();
+  }
+
+  Future<void> _removeSongFromPlaylists(
+      String songId, List<DocumentSnapshot> playlists) async {
+    final batch = FirebaseFirestore.instance.batch();
+
+    for (var playlist in playlists) {
+      final data = playlist.data() as Map<String, dynamic>?;
+      if (data == null) continue;
+      final songs = List<String>.from(data['songs'] ?? []);
+      songs.remove(songId);
+      batch.update(playlist.reference, {'songs': songs});
+    }
+
+    await batch.commit();
+  }
+
+  Future<bool> _handlePermanentDelete(SongModel song) async {
+    final playlists = await _getPlaylistsContainingSong(song.id);
+
+    if (playlists.isEmpty) {
+      return await _showSimpleDeleteConfirmation(song);
+    }
+
+    if (!mounted) return false;
+
+    final playlistNames = playlists.map((p) {
+      final data = p.data() as Map<String, dynamic>?;
+      return data?['name'] as String? ?? 'Playlist sin nombre';
+    }).join(', ');
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Canción en uso'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+                'La canción "${song.title}" está en las siguientes playlists:'),
+            const SizedBox(height: 8),
+            Text(
+              playlistNames,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            const Text('¿Qué deseas hacer?'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, {'action': 'cancel'}),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(context, {'action': 'remove_and_delete'}),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
+            child: const Text('Eliminar de playlists y borrar'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == null || result['action'] == 'cancel') {
+      return false;
+    }
+
+    if (result['action'] == 'remove_and_delete') {
+      await _removeSongFromPlaylists(song.id, playlists);
+      await FirebaseFirestore.instance
+          .collection('songs')
+          .doc(song.id)
+          .delete();
+      return true;
+    }
+
+    return false;
+  }
+
+  Future<bool> _showSimpleDeleteConfirmation(SongModel song) async {
+    if (!mounted) return false;
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Eliminar permanentemente'),
+            content: Text(
+                '¿Estás seguro de eliminar permanentemente "${song.title}"?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.red,
+                ),
+                child: const Text('Eliminar'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -106,38 +229,11 @@ class _DeletedSongsScreenState extends ConsumerState<DeletedSongsScreen> {
                       confirmDismiss: (direction) async {
                         if (direction == DismissDirection.endToStart) {
                           // Eliminar permanentemente
-                          final confirm = await showDialog<bool>(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              title: const Text('Eliminar permanentemente'),
-                              content: Text(
-                                  '¿Estás seguro de eliminar permanentemente "${song.title}"?'),
-                              actions: [
-                                TextButton(
-                                  onPressed: () =>
-                                      Navigator.pop(context, false),
-                                  child: const Text('Cancelar'),
-                                ),
-                                FilledButton(
-                                  onPressed: () => Navigator.pop(context, true),
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: Colors.red,
-                                  ),
-                                  child: const Text('Eliminar'),
-                                ),
-                              ],
-                            ),
-                          );
-
-                          if (confirm == true) {
-                            await FirebaseFirestore.instance
-                                .collection('songs')
-                                .doc(song.id)
-                                .delete();
+                          final deleted = await _handlePermanentDelete(song);
+                          if (deleted) {
                             _showActionBanner(song.title, true);
-                            return true;
                           }
-                          return false;
+                          return deleted;
                         } else {
                           // Restaurar
                           await FirebaseFirestore.instance

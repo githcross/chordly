@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:chordly/features/songs/services/chord_service.dart';
+import 'package:chordly/features/songs/models/lyric_document.dart';
 
 class LyricsInputField extends StatefulWidget {
   final TextEditingController controller;
@@ -97,30 +98,80 @@ class _LyricsInputFieldState extends State<LyricsInputField> {
   void _insertChord(String note) async {
     final text = _controller.text;
     final selection = _controller.selection;
-    final selectedText = text.substring(selection.start, selection.end);
-    final newText = text.replaceRange(
-      selection.start,
-      selection.end,
-      '($note)$selectedText',
-    );
 
-    _controller.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(
-        offset: selection.start + newText.length - text.length,
-      ),
-    );
+    // Obtener la línea actual y su índice
+    final lines = text.split('\n');
+    int currentLineIndex = 0;
+    int currentPosition = 0;
 
-    try {
-      if (widget.songId != null) {
+    // Encontrar la línea actual basada en la posición del cursor
+    for (int i = 0; i < lines.length; i++) {
+      if (currentPosition + lines[i].length + 1 > selection.start) {
+        currentLineIndex = i;
+        break;
+      }
+      currentPosition += lines[i].length + 1;
+    }
+
+    // Obtener la línea actual y su indentación
+    final currentLine = lines[currentLineIndex];
+    final leadingSpaces = RegExp(r'^\s*').firstMatch(currentLine)?[0] ?? '';
+
+    // Calcular la posición relativa dentro de la línea
+    final positionInLine = selection.start - currentPosition;
+
+    // Si estamos al inicio de la línea o antes de cualquier texto, preservar la indentación
+    if (positionInLine <= leadingSpaces.length) {
+      // Insertar después de los espacios iniciales
+      final beforeInsertion =
+          text.substring(0, currentPosition + leadingSpaces.length);
+      final afterInsertion =
+          text.substring(currentPosition + leadingSpaces.length);
+      final newText = beforeInsertion + '($note)' + afterInsertion;
+
+      _controller.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection.collapsed(
+          offset: currentPosition + leadingSpaces.length + note.length + 2,
+        ),
+      );
+    } else {
+      // Inserción normal en medio o final de la línea
+      final newText = text.replaceRange(
+        selection.start,
+        selection.end,
+        '($note)',
+      );
+
+      _controller.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection.collapsed(
+          offset: selection.start + note.length + 2,
+        ),
+      );
+    }
+
+    // Actualizar en Firestore si hay songId
+    if (widget.songId != null) {
+      try {
         final songDoc =
             FirebaseFirestore.instance.collection('songs').doc(widget.songId);
-        await songDoc.update({'lyrics': newText});
+        final lyricDoc = LyricDocument.fromInlineText(_controller.text);
+        await songDoc.update({
+          'lyrics': _controller.text,
+          'topFormat': lyricDoc.toTopFormat(),
+        });
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error al guardar la letra: $e')),
+          );
+        }
       }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al guardar la letra: $e')),
-      );
+    }
+
+    if (widget.onChanged != null) {
+      widget.onChanged!(_controller.text);
     }
   }
 
@@ -211,6 +262,115 @@ class _LyricsInputFieldState extends State<LyricsInputField> {
     );
   }
 
+  void _showSymbolsInfo(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.music_note,
+                  color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 8),
+              const Text('Símbolos Musicales'),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildSymbolExplanation(
+                  context,
+                  '(Am)',
+                  'Acordes entre paréntesis',
+                  'Indican el acorde a tocar. Ejemplo: (Am) = La menor',
+                ),
+                const Divider(),
+                _buildSymbolExplanation(
+                  context,
+                  '[Suave]',
+                  'Comentarios entre corchetes',
+                  'Instrucciones o notas sobre la interpretación. No aparecen en el teleprompter.',
+                ),
+                const Divider(),
+                _buildSymbolExplanation(
+                  context,
+                  'C/G',
+                  'Barra diagonal entre acordes',
+                  'Indica un acorde con bajo específico. Ejemplo: C/G = Do con bajo en Sol',
+                ),
+                const Divider(),
+                _buildSymbolExplanation(
+                  context,
+                  'Re-La',
+                  'Guión entre acordes',
+                  'Indica una transición o conexión entre acordes',
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Consejo: Usa el botón de nota musical para insertar acordes fácilmente',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontStyle: FontStyle.italic,
+                        color: Theme.of(context).colorScheme.secondary,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Entendido'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildSymbolExplanation(
+      BuildContext context, String symbol, String title, String description) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  symbol,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            description,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -221,6 +381,14 @@ class _LyricsInputFieldState extends State<LyricsInputField> {
             Text(
               'Letra de la canción',
               style: Theme.of(context).textTheme.titleMedium,
+            ),
+            IconButton(
+              icon: Icon(
+                Icons.info_outline,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              onPressed: () => _showSymbolsInfo(context),
+              tooltip: 'Símbolos musicales',
             ),
             const Spacer(),
             IconButton(

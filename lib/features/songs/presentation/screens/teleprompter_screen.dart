@@ -83,6 +83,111 @@ class _TeleprompterScreenState extends State<TeleprompterScreen> {
     _scrollTimer?.cancel();
   }
 
+  void _showSymbolsInfo() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.music_note,
+                  color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 8),
+              const Text('Símbolos Musicales'),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildSymbolExplanation(
+                  '(Am)',
+                  'Acordes entre paréntesis',
+                  'Indican el acorde a tocar. Ejemplo: (Am) = La menor',
+                ),
+                const Divider(),
+                _buildSymbolExplanation(
+                  '[Suave]',
+                  'Comentarios entre corchetes',
+                  'Instrucciones o notas sobre la interpretación',
+                ),
+                const Divider(),
+                _buildSymbolExplanation(
+                  'C/G',
+                  'Barra diagonal entre acordes',
+                  'Indica un acorde con bajo específico. Ejemplo: C/G = Do con bajo en Sol',
+                ),
+                const Divider(),
+                _buildSymbolExplanation(
+                  'Re-La',
+                  'Guión entre acordes',
+                  'Indica una transición o conexión entre acordes',
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Nota: Estos símbolos no aparecen en el modo teleprompter',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontStyle: FontStyle.italic,
+                        color: Theme.of(context).colorScheme.secondary,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Entendido'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildSymbolExplanation(
+      String symbol, String title, String description) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  symbol,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            description,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -95,6 +200,12 @@ class _TeleprompterScreenState extends State<TeleprompterScreen> {
         ),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            color: Colors.white,
+            onPressed: _showSymbolsInfo,
+            tooltip: 'Símbolos musicales',
+          ),
           if (widget.playlistSongs != null)
             IconButton(
               icon: Icon(
@@ -264,7 +375,13 @@ class _TeleprompterScreenState extends State<TeleprompterScreen> {
   }
 
   String _cleanLyrics(String lyrics) {
-    // Eliminar acordes entre paréntesis
-    return lyrics.replaceAll(RegExp(r'\([^)]*\)'), '');
+    // Eliminar acordes entre paréntesis, comentarios entre corchetes y signos de notación musical
+    return lyrics
+        .replaceAll(RegExp(r'\([^)]*\)'), '') // Eliminar acordes
+        .replaceAll(RegExp(r'\[[^\]]*\]'), '') // Eliminar comentarios
+        .replaceAll(RegExp(r'(?<=\s)[/-](?=\s)'),
+            '') // Eliminar / y - cuando están entre espacios
+        .replaceAll(RegExp(r'(?<=\w)[/-](?=\w)'),
+            ''); // Eliminar / y - cuando están entre palabras/letras
   }
 }

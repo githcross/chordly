@@ -11,6 +11,7 @@ import 'package:chordly/features/profile/presentation/screens/profile_screen.dar
 import 'package:google_fonts/google_fonts.dart';
 import 'package:chordly/core/theme/text_styles.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:chordly/core/services/version_service.dart';
 
 class GroupListItem extends StatelessWidget {
   final GroupModel group;
@@ -101,7 +102,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _updateOnlineStatus(true);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await VersionService.checkAndHandleNewVersion();
       _checkDisplayName();
     });
   }
