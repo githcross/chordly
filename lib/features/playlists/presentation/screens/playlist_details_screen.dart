@@ -226,7 +226,56 @@ class _PlaylistDetailsScreenState extends State<PlaylistDetailsScreen> {
               ),
               title: Text(songData['title']),
               subtitle: Text(songData['author'] ?? ''),
-              trailing: Text(_formatDuration(duration)),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Obtener la tonalidad de la canción
+                  if ((songs[index] is Map) &&
+                      ((songs[index]['transposedKey'] as String?)?.isNotEmpty ??
+                          false))
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      margin: const EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.secondaryContainer,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        songs[index]['transposedKey'],
+                        style: TextStyle(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSecondaryContainer,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  if ((songs[index] is! Map ||
+                          ((songs[index]['transposedKey'] as String?)
+                                  ?.isEmpty ??
+                              true)) &&
+                      (songData['baseKey']?.isNotEmpty ?? false))
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      margin: const EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        songData['baseKey'],
+                        style: TextStyle(
+                          color:
+                              Theme.of(context).colorScheme.onPrimaryContainer,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  Text(_formatDuration(duration)),
+                ],
+              ),
               onTap: () => _navigateToSongDetails(
                 context,
                 songDoc.id,

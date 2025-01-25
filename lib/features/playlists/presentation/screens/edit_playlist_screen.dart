@@ -114,6 +114,9 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
           }
 
           final songData = snapshot.data!.data() as Map<String, dynamic>;
+          final displayKey = song.transposedKey.isNotEmpty
+              ? song.transposedKey
+              : songData['baseKey'] ?? '';
 
           return Dismissible(
             key: Key(song.songId),
@@ -136,10 +139,11 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(song.transposedKey),
+                    if (displayKey.isNotEmpty) Text(displayKey),
                     IconButton(
                       icon: const Icon(Icons.music_note),
-                      onPressed: () => _showTransposeDialog(song),
+                      onPressed: () =>
+                          _showTransposeDialog(song, songData['baseKey'] ?? ''),
                     ),
                   ],
                 ),
@@ -169,7 +173,7 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
   void _addSelectedSongs(List<String> selectedSongIds) {
     // Convertir la lista actual de canciones a un Set de IDs para búsqueda eficiente
     final existingSongIds = Set<String>.from(
-      widget.playlist.songs.map((song) => song.songId),
+      _songs.map((song) => song.songId),
     );
 
     // Filtrar las canciones seleccionadas para excluir las que ya están en la playlist
@@ -190,11 +194,11 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
 
     // Agregar solo las canciones nuevas
     setState(() {
-      widget.playlist.songs.addAll(
+      _songs.addAll(
         newSongIds.map(
           (id) => PlaylistSongItem(
             songId: id,
-            order: widget.playlist.songs.length,
+            order: _songs.length,
             transposedKey: '',
             notes: '',
           ),
@@ -213,26 +217,65 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
     );
   }
 
-  Future<void> _showTransposeDialog(PlaylistSongItem song) async {
+  Future<void> _showTransposeDialog(
+      PlaylistSongItem song, String baseKey) async {
+    final currentKey =
+        song.transposedKey.isNotEmpty ? song.transposedKey : baseKey;
+
     final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Cambiar Tonalidad'),
-        content: DropdownButton<String>(
-          value: song.transposedKey,
-          items:
-              ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Tono original: $baseKey'),
+            const SizedBox(height: 16),
+            DropdownButton<String>(
+              value: currentKey,
+              hint: const Text('Seleccionar tono'),
+              items: [
+                'C',
+                'C#',
+                'D',
+                'D#',
+                'E',
+                'F',
+                'F#',
+                'G',
+                'G#',
+                'A',
+                'A#',
+                'B'
+              ]
                   .map((key) => DropdownMenuItem(
                         value: key,
                         child: Text(key),
                       ))
                   .toList(),
-          onChanged: (value) {
-            if (value != null) {
-              Navigator.pop(context, value);
-            }
-          },
+              onChanged: (value) {
+                if (value != null) {
+                  Navigator.pop(context, value);
+                }
+              },
+            ),
+          ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context, baseKey);
+            },
+            child: const Text('Restaurar Original'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+            },
+            child: const Text('Cancelar'),
+          ),
+        ],
       ),
     );
 
@@ -242,7 +285,9 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
         _songs[index] = PlaylistSongItem(
           songId: song.songId,
           order: song.order,
-          transposedKey: result,
+          transposedKey: result == baseKey
+              ? ''
+              : result, // Si es el tono original, guardar vacío
           notes: song.notes,
         );
       });
@@ -255,6 +300,17 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
     try {
       setState(() => _isLoading = true);
 
+      // Actualizar el orden de las canciones antes de guardar
+      final updatedSongs = List<PlaylistSongItem>.from(_songs);
+      for (var i = 0; i < updatedSongs.length; i++) {
+        updatedSongs[i] = PlaylistSongItem(
+          songId: updatedSongs[i].songId,
+          order: i,
+          transposedKey: updatedSongs[i].transposedKey,
+          notes: updatedSongs[i].notes,
+        );
+      }
+
       await FirebaseFirestore.instance
           .collection('playlists')
           .doc(widget.playlist.id)
@@ -262,7 +318,7 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
         'name': _nameController.text.trim(),
         'notes': _notesController.text.trim(),
         'date': _selectedDate,
-        'songs': _songs
+        'songs': updatedSongs
             .map((song) => {
                   'songId': song.songId,
                   'order': song.order,
@@ -270,18 +326,25 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
                   'notes': song.notes,
                 })
             .toList(),
+        'updatedAt': FieldValue.serverTimestamp(),
       });
 
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Playlist actualizada con éxito')),
+          const SnackBar(
+            content: Text('Playlist actualizada con éxito'),
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al actualizar playlist: $e')),
+          SnackBar(
+            content: Text('Error al actualizar playlist: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     } finally {
