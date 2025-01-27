@@ -621,7 +621,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                               mainAxisSize: MainAxisSize.min,
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('Versión: 1.0.0',
+                                Text('Versión: 1.1.0',
                                     style: AppTextStyles.subtitle(context)),
                                 const SizedBox(height: 8),
                                 Text(
