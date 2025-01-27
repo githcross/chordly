@@ -282,6 +282,13 @@ class _LyricsInputFieldState extends State<LyricsInputField> {
               children: [
                 _buildSymbolExplanation(
                   context,
+                  '(_Coro_)',
+                  'Letra entre guion bajo',
+                  'Indican la estructura de la letra. Ejemplo: (_Coro_) = Estructura del coro',
+                ),
+                const Divider(),
+                _buildSymbolExplanation(
+                  context,
                   '(Am)',
                   'Acordes entre paréntesis',
                   'Indican el acorde a tocar. Ejemplo: (Am) = La menor',

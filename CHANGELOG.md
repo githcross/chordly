@@ -16,12 +16,18 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 - Resaltado en amarillo y negrita para texto entre guiones bajos (ej: _coro_)
 - Menú de transposición agrupado para evitar cambios accidentales
 - Navegación directa a detalles de canción desde la búsqueda
+- Botón de información con guía de símbolos musicales
+  - Explicación de acordes, estructuras y comentarios
+  - Ejemplos visuales de cada símbolo
+  - Consejos de uso
+- Nueva pantalla de configuración accesible desde el menú de perfil
 
 ### Cambiado
 - Reorganización de los controles de transposición en un menú desplegable
 - Mejora en la visibilidad de las tonalidades en la lista de reproducción
 - Optimización del rendimiento en la carga de canciones
 - Mejora en el movimiento del minireproductor para seguir el gesto del usuario
+- Reorganización del menú de perfil con acceso directo a configuración
 
 ### Corregido
 - Actualización correcta de la lista de canciones al volver de la pantalla de edición
