@@ -13,6 +13,7 @@ import 'package:chordly/core/models/group_role.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/rendering.dart';
 import 'dart:ui'; // Agregar este import para ImageFilter
+import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 
 class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   final double minHeight;
@@ -87,6 +88,10 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
   int? _soundId;
   int? _lastBeatTime;
   int _currentBpm = 0;
+  YoutubePlayerController? _videoController;
+  bool _isVideoVisible = false;
+  double _videoOffsetX = 0;
+  double _videoOffsetY = 0;
 
   // Agregar getter para isLandscape
   bool get isLandscape =>
@@ -127,6 +132,7 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     _audioPlayer.dispose();
     _metronomeTimer?.cancel();
     _metronome.dispose();
+    _videoController?.dispose();
     super.dispose();
   }
 
@@ -330,73 +336,80 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<DocumentSnapshot>(
-      stream: _songStream,
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          print('Error en StreamBuilder: ${snapshot.error}');
-          return _buildErrorScreen('Error al cargar la canción');
-        }
+    return Stack(
+      children: [
+        StreamBuilder<DocumentSnapshot>(
+          stream: _songStream,
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              print('Error en StreamBuilder: ${snapshot.error}');
+              return _buildErrorScreen('Error al cargar la canción');
+            }
 
-        if (!snapshot.hasData) {
-          return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(),
-            ),
-          );
-        }
+            if (!snapshot.hasData) {
+              return const Scaffold(
+                body: Center(
+                  child: CircularProgressIndicator(),
+                ),
+              );
+            }
 
-        if (!snapshot.data!.exists) {
-          return _buildErrorScreen('La canción no existe o fue eliminada');
-        }
+            if (!snapshot.data!.exists) {
+              return _buildErrorScreen('La canción no existe o fue eliminada');
+            }
 
-        final songData = snapshot.data!.data() as Map<String, dynamic>;
+            final songData = snapshot.data!.data() as Map<String, dynamic>;
 
-        // Inicializar las letras cuando se carga el documento
-        if (!_isInitialized) {
-          _originalLyrics = songData['lyrics'] ?? '';
-          _transposedLyrics =
-              songData['lyricsTranspose'] ?? songData['lyrics'] ?? '';
-          _isInitialized = true;
-        }
+            // Inicializar las letras cuando se carga el documento
+            if (!_isInitialized) {
+              _originalLyrics = songData['lyrics'] ?? '';
+              _transposedLyrics =
+                  songData['lyricsTranspose'] ?? songData['lyrics'] ?? '';
+              _isInitialized = true;
+            }
 
-        return StreamBuilder<GroupRole>(
-          stream: _getUserRole(),
-          builder: (context, roleSnapshot) {
-            final userRole = roleSnapshot.data ?? GroupRole.member;
-            final canEdit =
-                userRole == GroupRole.admin || userRole == GroupRole.editor;
+            return StreamBuilder<GroupRole>(
+              stream: _getUserRole(),
+              builder: (context, roleSnapshot) {
+                final userRole = roleSnapshot.data ?? GroupRole.member;
+                final canEdit =
+                    userRole == GroupRole.admin || userRole == GroupRole.editor;
 
-            return Scaffold(
-              backgroundColor: isLandscape ? Colors.black : null,
-              appBar:
-                  isLandscape ? null : _buildAppBar(context, songData, canEdit),
-              body: Stack(
-                children: [
-                  // Contenido principal
-                  _buildSongContent(songData),
+                return Scaffold(
+                  backgroundColor: isLandscape ? Colors.black : null,
+                  appBar: isLandscape
+                      ? null
+                      : _buildAppBar(context, songData, canEdit),
+                  body: Stack(
+                    children: [
+                      // Contenido principal
+                      _buildSongContent(songData),
 
-                  // Controles flotantes
-                  if (isLandscape)
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: _buildLandscapeControls(),
-                    ),
-                  if (!isLandscape && _isPlayingMetronome)
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: _buildBpmControls(),
-                    ),
-                ],
-              ),
+                      // Controles flotantes
+                      if (isLandscape)
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          child: _buildLandscapeControls(),
+                        ),
+                      if (!isLandscape && _isPlayingMetronome)
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          child: _buildBpmControls(),
+                        ),
+                      _buildVideoPlayer(),
+                    ],
+                  ),
+                );
+              },
             );
           },
-        );
-      },
+        ),
+        _buildVideoPlayer(),
+      ],
     );
   }
 
@@ -408,15 +421,59 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     return AppBar(
       title: Text(songData['title'] ?? 'Sin título'),
       actions: [
-        IconButton(
-          icon: const Icon(Icons.arrow_upward),
-          tooltip: 'Subir medio tono',
-          onPressed: () => _transposeChords(true),
-        ),
-        IconButton(
-          icon: const Icon(Icons.arrow_downward),
-          tooltip: 'Bajar medio tono',
-          onPressed: () => _transposeChords(false),
+        _buildVideoReferenceButton(songData),
+        // Menú de transposición
+        PopupMenuButton<String>(
+          tooltip: 'Transposición',
+          icon: const Icon(Icons.music_note),
+          itemBuilder: (context) => [
+            PopupMenuItem(
+              value: 'up',
+              child: Row(
+                children: [
+                  Icon(Icons.arrow_upward,
+                      color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 8),
+                  const Text('Subir medio tono'),
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              value: 'down',
+              child: Row(
+                children: [
+                  Icon(Icons.arrow_downward,
+                      color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 8),
+                  const Text('Bajar medio tono'),
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              value: 'restore',
+              child: Row(
+                children: [
+                  Icon(Icons.refresh,
+                      color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 8),
+                  const Text('Restaurar acordes'),
+                ],
+              ),
+            ),
+          ],
+          onSelected: (value) {
+            switch (value) {
+              case 'up':
+                _transposeChords(true);
+                break;
+              case 'down':
+                _transposeChords(false);
+                break;
+              case 'restore':
+                _restoreOriginalChords();
+                break;
+            }
+          },
         ),
         IconButton(
           icon: const Icon(Icons.slideshow),
@@ -439,9 +496,6 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
                   );
                 }
                 break;
-              case 'restore':
-                _restoreOriginalChords();
-                break;
               case 'info':
                 _showInfoDialog(context, songData);
                 break;
@@ -459,16 +513,6 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
                   ],
                 ),
               ),
-            const PopupMenuItem(
-              value: 'restore',
-              child: Row(
-                children: [
-                  Icon(Icons.refresh),
-                  SizedBox(width: 8),
-                  Text('Restaurar acordes'),
-                ],
-              ),
-            ),
             const PopupMenuItem(
               value: 'info',
               child: Row(
@@ -879,6 +923,15 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
                 'Estado',
                 songData['status'] == 'publicado' ? 'Publicado' : 'Borrador',
               ),
+              if (songData['videoReference'] != null) ...[
+                const SizedBox(height: 16),
+                _buildInfoRow(
+                  context,
+                  Icons.video_library,
+                  'Video de referencia',
+                  songData['videoReference']['notes'] ?? 'Sin notas',
+                ),
+              ],
               if (songData['collaborators'] != null &&
                   (songData['collaborators'] as List).isNotEmpty) ...[
                 const SizedBox(height: 16),
@@ -976,6 +1029,17 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
+              if (_isPlayingMetronome) ...[
+                const SizedBox(width: 8),
+                InkWell(
+                  onTap: _stopMetronome,
+                  child: Icon(
+                    Icons.close,
+                    size: 20,
+                    color: Theme.of(context).colorScheme.onPrimary,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -1458,6 +1522,87 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  void _initializeVideoPlayer(String videoUrl) {
+    final videoId = YoutubePlayer.convertUrlToId(videoUrl);
+    if (videoId != null) {
+      _videoController = YoutubePlayerController(
+        initialVideoId: videoId,
+        flags: YoutubePlayerFlags(
+          autoPlay: true,
+        ),
+      );
+      setState(() {
+        _isVideoVisible = true;
+      });
+    }
+  }
+
+  Widget _buildVideoPlayer() {
+    if (!_isVideoVisible || _videoController == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Positioned(
+      bottom: 16 + _videoOffsetY,
+      right: 16 + _videoOffsetX,
+      child: GestureDetector(
+        onPanUpdate: (details) {
+          setState(() {
+            _videoOffsetX -= details.delta.dx;
+            _videoOffsetY -= details.delta.dy;
+          });
+        },
+        child: Container(
+          width: 200,
+          height: 120,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: YoutubePlayer(
+              controller: _videoController!,
+              showVideoProgressIndicator: true,
+              progressIndicatorColor: Theme.of(context).colorScheme.primary,
+              progressColors: ProgressBarColors(
+                playedColor: Theme.of(context).colorScheme.primary,
+                handleColor: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVideoReferenceButton(Map<String, dynamic> songData) {
+    final videoReference = songData['videoReference'];
+    if (videoReference == null) return const SizedBox.shrink();
+
+    return IconButton(
+      icon: const Icon(Icons.video_library),
+      tooltip: 'Ver video de referencia',
+      onPressed: () {
+        if (!_isVideoVisible) {
+          _initializeVideoPlayer(videoReference['url']);
+        } else {
+          setState(() {
+            _isVideoVisible = false;
+            _videoController?.dispose();
+            _videoController = null;
+          });
+        }
+      },
     );
   }
 }

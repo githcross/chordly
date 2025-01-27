@@ -37,6 +37,7 @@ dependencies:
   audioplayers: ^5.2.1
   file_picker: ^6.1.1
   shared_preferences: ^2.2.2
+  youtube_player_flutter: ^8.1.2
 
 dev_dependencies:
   flutter_test: 

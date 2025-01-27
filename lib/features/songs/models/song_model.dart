@@ -17,6 +17,7 @@ class SongModel {
   final List<String> playlists;
   final bool isActive;
   final DateTime? deletedAt;
+  final VideoReference? videoReference;
 
   SongModel({
     required this.id,
@@ -35,6 +36,7 @@ class SongModel {
     required this.playlists,
     this.isActive = true,
     this.deletedAt,
+    this.videoReference,
   });
 
   factory SongModel.fromMap(String id, Map<String, dynamic> map) {
@@ -57,6 +59,9 @@ class SongModel {
       deletedAt: map['deletedAt'] != null
           ? (map['deletedAt'] as Timestamp).toDate()
           : null,
+      videoReference: map['videoReference'] != null
+          ? VideoReference.fromMap(map['videoReference'])
+          : null,
     );
   }
 
@@ -77,6 +82,7 @@ class SongModel {
       'playlists': playlists,
       'isActive': isActive,
       'deletedAt': deletedAt,
+      'videoReference': videoReference?.toMap(),
     };
   }
 
@@ -118,6 +124,31 @@ class SongModel {
       playlists: playlists ?? this.playlists,
       isActive: this.isActive,
       deletedAt: this.deletedAt,
+      videoReference: this.videoReference,
     );
+  }
+}
+
+class VideoReference {
+  final String url;
+  final String notes;
+
+  VideoReference({
+    required this.url,
+    this.notes = '',
+  });
+
+  factory VideoReference.fromMap(Map<String, dynamic> map) {
+    return VideoReference(
+      url: map['url'] ?? '',
+      notes: map['notes'] ?? '',
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'url': url,
+      'notes': notes,
+    };
   }
 }

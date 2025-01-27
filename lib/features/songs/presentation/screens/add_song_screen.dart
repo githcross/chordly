@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:chordly/features/songs/presentation/widgets/lyrics_input_field.dart';
 import 'package:chordly/core/theme/text_styles.dart';
 import 'package:chordly/core/utils/snackbar_utils.dart';
+import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 
 class AddSongScreen extends ConsumerStatefulWidget {
   final String groupId;
@@ -28,6 +29,8 @@ class _AddSongScreenState extends ConsumerState<AddSongScreen> {
   final _lyricsController = TextEditingController();
   final _tempoController = TextEditingController();
   final _durationController = TextEditingController();
+  final _videoUrlController = TextEditingController();
+  final _videoNotesController = TextEditingController();
 
   List<String> _availableNotes = [];
   List<String> _availableTags = [];
@@ -171,6 +174,15 @@ class _AddSongScreenState extends ConsumerState<AddSongScreen> {
         'isActive': true,
       };
 
+      // Agregar video de referencia si hay URL
+      final videoUrl = _videoUrlController.text.trim();
+      if (videoUrl.isNotEmpty) {
+        newSong['videoReference'] = {
+          'url': videoUrl,
+          'notes': _videoNotesController.text.trim(),
+        };
+      }
+
       await FirebaseFirestore.instance.collection('songs').add(newSong);
 
       if (!mounted) return;
@@ -267,6 +279,8 @@ class _AddSongScreenState extends ConsumerState<AddSongScreen> {
     _lyricsController.dispose();
     _tempoController.dispose();
     _durationController.dispose();
+    _videoUrlController.dispose();
+    _videoNotesController.dispose();
     super.dispose();
   }
 
@@ -545,6 +559,41 @@ class _AddSongScreenState extends ConsumerState<AddSongScreen> {
                     onSelectionChanged: (Set<String> newSelection) {
                       setState(() => _status = newSelection.first);
                     },
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Video de referencia',
+                    style: AppTextStyles.sectionTitle(context),
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _videoUrlController,
+                    decoration: const InputDecoration(
+                      labelText: 'URL del video',
+                      hintText: 'Ingresa la URL del video de YouTube',
+                      prefixIcon: Icon(Icons.video_library),
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (value) {
+                      if (value != null && value.isNotEmpty) {
+                        final videoId = YoutubePlayer.convertUrlToId(value);
+                        if (videoId == null) {
+                          return 'URL de YouTube inválida';
+                        }
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _videoNotesController,
+                    decoration: const InputDecoration(
+                      labelText: 'Notas sobre el video',
+                      hintText: 'Agrega notas sobre la versión del video',
+                      prefixIcon: Icon(Icons.note),
+                      border: OutlineInputBorder(),
+                    ),
+                    maxLines: 2,
                   ),
                 ],
               ),

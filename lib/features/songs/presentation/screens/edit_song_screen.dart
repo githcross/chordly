@@ -9,6 +9,7 @@ import 'package:chordly/core/theme/text_styles.dart';
 import 'package:chordly/core/utils/snackbar_utils.dart';
 import 'package:chordly/features/songs/models/lyric_document.dart';
 import 'package:chordly/features/songs/presentation/screens/song_details_screen.dart';
+import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 
 class EditSongScreen extends ConsumerStatefulWidget {
   final String songId;
@@ -31,6 +32,8 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
   late TextEditingController _lyricsController;
   late TextEditingController _tempoController;
   late TextEditingController _durationController;
+  late TextEditingController _videoUrlController;
+  late TextEditingController _videoNotesController;
 
   List<String> _availableNotes = [];
   List<String> _availableTags = [];
@@ -59,15 +62,21 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
         throw Exception('No se encontró la letra original de la canción');
       }
 
+      final videoReference =
+          _songData['videoReference'] as Map<String, dynamic>?;
+
       setState(() {
         _titleController = TextEditingController(text: _songData['title']);
         _authorController = TextEditingController(text: _songData['author']);
-        _lyricsController = TextEditingController(
-            text: originalLyrics); // Usar específicamente lyrics
+        _lyricsController = TextEditingController(text: originalLyrics);
         _tempoController =
-            TextEditingController(text: ((_songData['tempo'] ?? 0).toString()));
+            TextEditingController(text: (_songData['tempo'] ?? 0).toString());
         _durationController =
             TextEditingController(text: _songData['duration'] ?? '');
+        _videoUrlController =
+            TextEditingController(text: videoReference?['url'] ?? '');
+        _videoNotesController =
+            TextEditingController(text: videoReference?['notes'] ?? '');
 
         _selectedKey = _songData['baseKey'] ?? '';
         _selectedTags = List.from(_songData['tags'] ?? []);
@@ -159,6 +168,18 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
         'updatedAt': FieldValue.serverTimestamp(),
         'lastUpdatedBy': currentUser.uid,
       };
+
+      // Agregar video de referencia si hay URL
+      final videoUrl = _videoUrlController.text.trim();
+      if (videoUrl.isNotEmpty) {
+        updatedSongData['videoReference'] = {
+          'url': videoUrl,
+          'notes': _videoNotesController.text.trim(),
+        };
+      } else {
+        // Si no hay URL, eliminar la referencia de video si existía
+        updatedSongData['videoReference'] = FieldValue.delete();
+      }
 
       // Agregar colaboradores si no es el creador original
       if (!isOriginalCreator) {
@@ -254,6 +275,8 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
     _lyricsController.dispose();
     _tempoController.dispose();
     _durationController.dispose();
+    _videoUrlController.dispose();
+    _videoNotesController.dispose();
     super.dispose();
   }
 
@@ -581,6 +604,39 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
                     ),
                   ],
                 ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Video de referencia',
+                style: AppTextStyles.sectionTitle(context),
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _videoUrlController,
+                decoration: const InputDecoration(
+                  labelText: 'URL del video',
+                  hintText: 'Ingresa la URL del video de YouTube',
+                  prefixIcon: Icon(Icons.video_library),
+                ),
+                validator: (value) {
+                  if (value != null && value.isNotEmpty) {
+                    final videoId = YoutubePlayer.convertUrlToId(value);
+                    if (videoId == null) {
+                      return 'URL de YouTube inválida';
+                    }
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _videoNotesController,
+                decoration: const InputDecoration(
+                  labelText: 'Notas sobre el video',
+                  hintText: 'Agrega notas sobre la versión del video',
+                  prefixIcon: Icon(Icons.note),
+                ),
+                maxLines: 2,
               ),
             ],
           ),
