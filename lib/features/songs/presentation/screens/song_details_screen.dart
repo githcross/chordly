@@ -148,6 +148,9 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     final actualFontSize = fontSize ?? _fontSize;
 
     final chordRegex = RegExp(r'\(([^)]+)\)');
+    final referenceRegex = RegExp(r'_([^_]+)_');
+
+    // Dividir primero por acordes
     final parts = _transposedLyrics.split(chordRegex);
     final chords = chordRegex
         .allMatches(_transposedLyrics)
@@ -157,15 +160,40 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     List<TextSpan> textSpans = [];
 
     for (int i = 0; i < parts.length; i++) {
-      textSpans.add(TextSpan(
-        text: parts[i],
-        style: TextStyle(
-          fontSize: actualFontSize,
-          color: textColor,
-          height: 1.5,
-        ),
-      ));
+      // Procesar el texto para referencias (texto entre guiones bajos)
+      final textParts = parts[i].split(referenceRegex);
+      final references =
+          referenceRegex.allMatches(parts[i]).map((m) => m.group(1)!).toList();
 
+      // Agregar partes del texto y referencias
+      for (int j = 0; j < textParts.length; j++) {
+        // Agregar texto normal
+        if (textParts[j].isNotEmpty) {
+          textSpans.add(TextSpan(
+            text: textParts[j],
+            style: TextStyle(
+              fontSize: actualFontSize,
+              color: textColor,
+              height: 1.5,
+            ),
+          ));
+        }
+
+        // Agregar referencia si existe
+        if (j < references.length) {
+          textSpans.add(TextSpan(
+            text: references[j],
+            style: TextStyle(
+              fontSize: actualFontSize,
+              color: Colors.amber[700],
+              fontWeight: FontWeight.bold,
+              height: 1.5,
+            ),
+          ));
+        }
+      }
+
+      // Agregar acorde si existe
       if (i < chords.length) {
         textSpans.add(TextSpan(
           text: '(${chords[i]})',

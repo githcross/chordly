@@ -4,8 +4,12 @@ import 'package:chordly/features/songs/models/song_model.dart';
 
 class SongSearchDelegate extends SearchDelegate<String> {
   final String groupId;
+  final Function(String) onSongSelected;
 
-  SongSearchDelegate({required this.groupId});
+  SongSearchDelegate({
+    required this.groupId,
+    required this.onSongSelected,
+  });
 
   @override
   List<Widget> buildActions(BuildContext context) {
@@ -77,7 +81,8 @@ class SongSearchDelegate extends SearchDelegate<String> {
                     ),
               ),
               onTap: () {
-                Navigator.pushNamed(context, '/song/${song.id}');
+                close(context, song.id);
+                onSongSelected(song.id);
               },
             );
           },
@@ -156,8 +161,8 @@ class SongSearchDelegate extends SearchDelegate<String> {
                 overflow: TextOverflow.ellipsis,
               ),
               onTap: () {
-                // TODO: Navegar a la vista detallada de la canción
                 close(context, song.id);
+                onSongSelected(song.id);
               },
             );
           },

@@ -100,7 +100,20 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
               onPressed: () {
                 showSearch(
                   context: context,
-                  delegate: SongSearchDelegate(groupId: widget.group.id),
+                  delegate: SongSearchDelegate(
+                    groupId: widget.group.id,
+                    onSongSelected: (songId) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => SongDetailsScreen(
+                            songId: songId,
+                            groupId: widget.group.id,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 );
               },
             ),
