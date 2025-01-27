@@ -4,9 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chordly/config/theme/app_theme.dart';
 import 'package:chordly/firebase_options.dart';
 import 'package:chordly/features/auth/presentation/screens/auth_check_screen.dart';
-import 'package:chordly/features/auth/providers/online_status_provider.dart';
 import 'package:chordly/features/songs/services/song_purge_service.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:chordly/core/providers/theme_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,32 +24,7 @@ void main() async {
     appleProvider: AppleProvider.appAttest,
   );
 
-  runApp(
-    ProviderScope(
-      child: Builder(
-        builder: (context) {
-          return Consumer(
-            builder: (context, ref, child) {
-              // Observar cambios en el ciclo de vida de la app
-              ref.listen(
-                appLifecycleProvider.select((value) => value.value),
-                (previous, state) {
-                  if (state != null) {
-                    final isOnline = state == AppLifecycleState.resumed;
-                    ref
-                        .read(onlineStatusProvider.notifier)
-                        .updateOnlineStatus(isOnline);
-                  }
-                },
-              );
-
-              return const MyApp();
-            },
-          );
-        },
-      ),
-    ),
-  );
+  runApp(const ProviderScope(child: MyApp()));
 }
 
 class MyApp extends ConsumerWidget {
@@ -57,12 +32,12 @@ class MyApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final themeState = ref.watch(themeProvider);
+
     return MaterialApp(
       title: 'Chordly',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.system,
+      theme: themeState.themeData,
       home: const AuthCheckScreen(),
     );
   }

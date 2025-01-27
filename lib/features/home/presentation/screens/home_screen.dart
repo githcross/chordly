@@ -12,6 +12,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:chordly/core/theme/text_styles.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:chordly/core/services/version_service.dart';
+import 'package:chordly/features/settings/presentation/screens/settings_screen.dart';
 
 class GroupListItem extends StatelessWidget {
   final GroupModel group;
@@ -581,6 +582,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   PopupMenuItem(
                     child: Row(
                       children: [
+                        const Icon(Icons.settings_outlined),
+                        const SizedBox(width: 8),
+                        Text('Configuración',
+                            style: AppTextStyles.subtitle(context)),
+                      ],
+                    ),
+                    onTap: () {
+                      Future.delayed(
+                        const Duration(seconds: 0),
+                        () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const SettingsScreen(),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  PopupMenuItem(
+                    child: Row(
+                      children: [
                         const Icon(Icons.info_outline),
                         const SizedBox(width: 8),
                         Text('Acerca de',
@@ -619,14 +641,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                       );
                     },
                   ),
+                  PopupMenuItem(
+                    child: Row(
+                      children: [
+                        const Icon(Icons.logout),
+                        const SizedBox(width: 8),
+                        Text('Salir', style: AppTextStyles.subtitle(context)),
+                      ],
+                    ),
+                    onTap: () async {
+                      await ref.read(authProvider.notifier).signOut();
+                    },
+                  ),
                 ],
               );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await ref.read(authProvider.notifier).signOut();
             },
           ),
         ],
