@@ -27,11 +27,15 @@ class _TeleprompterScreenState extends State<TeleprompterScreen> {
   Timer? _scrollTimer;
   bool _isPlaylistVisible = false;
   late int _currentSongIndex;
+  late String _lyrics;
+  late double _fontSize;
 
   @override
   void initState() {
     super.initState();
     _currentSongIndex = widget.currentIndex ?? 0;
+    _lyrics = widget.lyrics;
+    _fontSize = 24.0; // Assuming a default font size
   }
 
   @override
@@ -161,15 +165,7 @@ class _TeleprompterScreenState extends State<TeleprompterScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                   child: Center(
-                    child: Text(
-                      _cleanLyrics(widget.lyrics),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        height: 2.0,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
+                    child: _buildHighlightedLyrics(context),
                   ),
                 ),
               ),
@@ -302,6 +298,47 @@ class _TeleprompterScreenState extends State<TeleprompterScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildHighlightedLyrics(BuildContext context) {
+    final referenceRegex = RegExp(r'_([^_]+)_');
+    final parts = _lyrics.split(referenceRegex);
+    final references =
+        referenceRegex.allMatches(_lyrics).map((m) => m.group(1)!).toList();
+
+    List<TextSpan> textSpans = [];
+
+    for (int i = 0; i < parts.length; i++) {
+      // Agregar texto normal
+      if (parts[i].isNotEmpty) {
+        textSpans.add(TextSpan(
+          text: parts[i],
+          style: TextStyle(
+            fontSize: _fontSize,
+            color: Colors.white,
+            height: 1.5,
+          ),
+        ));
+      }
+
+      // Agregar referencia si existe
+      if (i < references.length) {
+        textSpans.add(TextSpan(
+          text: references[i],
+          style: TextStyle(
+            fontSize: _fontSize,
+            color: Colors.yellow,
+            fontWeight: FontWeight.bold,
+            height: 1.5,
+          ),
+        ));
+      }
+    }
+
+    return RichText(
+      text: TextSpan(children: textSpans),
+      textAlign: TextAlign.center,
     );
   }
 

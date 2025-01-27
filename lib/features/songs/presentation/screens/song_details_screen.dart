@@ -364,22 +364,30 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        StreamBuilder<DocumentSnapshot>(
-          stream: _songStream,
-          builder: (context, snapshot) {
-            if (snapshot.hasError) {
-              print('Error en StreamBuilder: ${snapshot.error}');
-              return _buildErrorScreen('Error al cargar la canción');
-            }
+    // Si no hay playlist, mostrar vista normal
+    if (widget.playlistSongs == null) {
+      return _buildSingleSongView();
+    }
 
+    // Si hay playlist, envolver en PageView para permitir deslizar
+    return PageView.builder(
+      controller: _pageController,
+      itemCount: widget.playlistSongs!.length,
+      onPageChanged: (index) {
+        setState(() {
+          _currentIndex = index;
+          _isInitialized = false; // Resetear para cargar nueva canción
+        });
+      },
+      itemBuilder: (context, index) {
+        return StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('songs')
+              .doc(widget.playlistSongs![index])
+              .snapshots(),
+          builder: (context, snapshot) {
             if (!snapshot.hasData) {
-              return const Scaffold(
-                body: Center(
-                  child: CircularProgressIndicator(),
-                ),
-              );
+              return const Center(child: CircularProgressIndicator());
             }
 
             if (!snapshot.data!.exists) {
@@ -432,8 +440,8 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
               },
             );
           },
-        ),
-      ],
+        );
+      },
     );
   }
 
@@ -673,74 +681,43 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
           });
         }
 
-        return isLandscape
-            ? _buildLandscapeContent(context, songData)
-            : Scaffold(
-                appBar: AppBar(
-                  title: Text(
-                    'Detalles de la Canción',
-                    style: AppTextStyles.appBarTitle(context),
-                  ),
-                  actions: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_upward),
-                      tooltip: 'Subir medio tono',
-                      onPressed: () => _transposeChords(true),
+        return StreamBuilder<GroupRole>(
+          stream: _getUserRole(),
+          builder: (context, roleSnapshot) {
+            final userRole = roleSnapshot.data ?? GroupRole.member;
+            final canEdit =
+                userRole == GroupRole.admin || userRole == GroupRole.editor;
+
+            return isLandscape
+                ? _buildLandscapeContent(context, songData)
+                : Scaffold(
+                    backgroundColor: isLandscape ? Colors.black : null,
+                    appBar: isLandscape
+                        ? null
+                        : _buildAppBar(context, songData, canEdit),
+                    body: Stack(
+                      children: [
+                        _buildSongContent(songData),
+                        if (isLandscape)
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            child: _buildLandscapeControls(),
+                          ),
+                        if (!isLandscape && _isPlayingMetronome)
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            child: _buildBpmControls(),
+                          ),
+                        _buildVideoPlayer(),
+                      ],
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.arrow_downward),
-                      tooltip: 'Bajar medio tono',
-                      onPressed: () => _transposeChords(false),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.refresh),
-                      tooltip: 'Restaurar acordes originales',
-                      onPressed: _restoreOriginalChords,
-                    ),
-                  ],
-                ),
-                body: SingleChildScrollView(
-                  padding: const EdgeInsets.all(1),
-                  child: _buildInfoPanel(context, songData),
-                ),
-                floatingActionButton: PopupMenuButton(
-                  icon: Container(
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary,
-                      shape: BoxShape.circle,
-                    ),
-                    padding: const EdgeInsets.all(8),
-                    child: const Icon(
-                      Icons.more_vert,
-                      color: Colors.white,
-                    ),
-                  ),
-                  itemBuilder: (context) => [
-                    PopupMenuItem(
-                      child: ListTile(
-                        leading: const Icon(Icons.edit),
-                        title: const Text('Editar'),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      onTap: () => Future.delayed(
-                        const Duration(seconds: 0),
-                        () => _navigateToEdit(context),
-                      ),
-                    ),
-                    PopupMenuItem(
-                      child: ListTile(
-                        leading: const Icon(Icons.info_outline),
-                        title: const Text('Información'),
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      onTap: () => Future.delayed(
-                        const Duration(seconds: 0),
-                        () => _showInfoDialog(context, songData),
-                      ),
-                    ),
-                  ],
-                ),
-              );
+                  );
+          },
+        );
       },
     );
   }

@@ -43,6 +43,7 @@ class ThemeNotifier extends StateNotifier<ThemeState> {
     colorScheme: ColorScheme.fromSeed(
       seedColor: Colors.pink,
       brightness: Brightness.light,
+      surface: Colors.white,
     ),
   );
 
