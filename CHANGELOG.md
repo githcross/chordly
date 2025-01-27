@@ -8,6 +8,10 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 ## [1.1.0] - 2025-01-XX
 
 ### Añadido
+- Navegación por gestos entre canciones en la lista de reproducción
+  - Deslizar horizontalmente para cambiar de canción
+  - Mantiene el estado de transposición y metrónomo
+  - Transiciones suaves entre canciones
 - Minireproductor de YouTube móvil en la pantalla de detalles de canción
   - Arrastrable a cualquier posición de la pantalla
   - Controles de reproducción y barra de progreso
@@ -23,6 +27,10 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 - Nueva pantalla de configuración accesible desde el menú de perfil
 
 ### Cambiado
+- Unificación del diseño de la pantalla de detalles de canción
+  - Mismo diseño al acceder desde playlist o directamente
+  - Interfaz más limpia y moderna
+  - Mejor organización de controles y funcionalidades
 - Reorganización de los controles de transposición en un menú desplegable
 - Mejora en la visibilidad de las tonalidades en la lista de reproducción
 - Optimización del rendimiento en la carga de canciones
