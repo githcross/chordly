@@ -83,69 +83,6 @@ class _TeleprompterScreenState extends State<TeleprompterScreen> {
     _scrollTimer?.cancel();
   }
 
-  void _showSymbolsInfo() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Row(
-            children: [
-              Icon(Icons.music_note,
-                  color: Theme.of(context).colorScheme.primary),
-              const SizedBox(width: 8),
-              const Text('Símbolos Musicales'),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildSymbolExplanation(
-                  '(Am)',
-                  'Acordes entre paréntesis',
-                  'Indican el acorde a tocar. Ejemplo: (Am) = La menor',
-                ),
-                const Divider(),
-                _buildSymbolExplanation(
-                  '[Suave]',
-                  'Comentarios entre corchetes',
-                  'Instrucciones o notas sobre la interpretación',
-                ),
-                const Divider(),
-                _buildSymbolExplanation(
-                  'C/G',
-                  'Barra diagonal entre acordes',
-                  'Indica un acorde con bajo específico. Ejemplo: C/G = Do con bajo en Sol',
-                ),
-                const Divider(),
-                _buildSymbolExplanation(
-                  'Re-La',
-                  'Guión entre acordes',
-                  'Indica una transición o conexión entre acordes',
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Nota: Estos símbolos no aparecen en el modo teleprompter',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        fontStyle: FontStyle.italic,
-                        color: Theme.of(context).colorScheme.secondary,
-                      ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Entendido'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   Widget _buildSymbolExplanation(
       String symbol, String title, String description) {
     return Padding(
@@ -200,12 +137,6 @@ class _TeleprompterScreenState extends State<TeleprompterScreen> {
         ),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.info_outline),
-            color: Colors.white,
-            onPressed: _showSymbolsInfo,
-            tooltip: 'Símbolos musicales',
-          ),
           if (widget.playlistSongs != null)
             IconButton(
               icon: Icon(
