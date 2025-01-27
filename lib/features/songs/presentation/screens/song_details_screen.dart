@@ -410,10 +410,7 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
                       : _buildAppBar(context, songData, canEdit),
                   body: Stack(
                     children: [
-                      // Contenido principal
                       _buildSongContent(songData),
-
-                      // Controles flotantes
                       if (isLandscape)
                         Positioned(
                           left: 0,
@@ -436,7 +433,6 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
             );
           },
         ),
-        _buildVideoPlayer(),
       ],
     );
   }
@@ -1024,6 +1020,40 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
   }
 
   Widget _buildBpmButton(BuildContext context, int bpm) {
+    final List<Widget> rowChildren = [
+      Icon(
+        _isPlayingMetronome ? Icons.pause : Icons.play_arrow,
+        size: 20,
+        color: _isPlayingMetronome
+            ? Theme.of(context).colorScheme.onPrimary
+            : Theme.of(context).colorScheme.primary,
+      ),
+      const SizedBox(width: 4),
+      Text(
+        '$bpm BPM',
+        style: TextStyle(
+          color: _isPlayingMetronome
+              ? Theme.of(context).colorScheme.onPrimary
+              : Theme.of(context).colorScheme.primary,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    ];
+
+    if (_isPlayingMetronome) {
+      rowChildren.addAll([
+        const SizedBox(width: 8),
+        InkWell(
+          onTap: _stopMetronome,
+          child: Icon(
+            Icons.close,
+            size: 20,
+            color: Theme.of(context).colorScheme.onPrimary,
+          ),
+        ),
+      ]);
+    }
+
     return Container(
       margin: const EdgeInsets.only(left: 8),
       child: InkWell(
@@ -1039,36 +1069,7 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                _isPlayingMetronome ? Icons.pause : Icons.play_arrow,
-                size: 20,
-                color: _isPlayingMetronome
-                    ? Theme.of(context).colorScheme.onPrimary
-                    : Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(width: 4),
-              Text(
-                '$bpm BPM',
-                style: TextStyle(
-                  color: _isPlayingMetronome
-                      ? Theme.of(context).colorScheme.onPrimary
-                      : Theme.of(context).colorScheme.primary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              if (_isPlayingMetronome) ...[
-                const SizedBox(width: 8),
-                InkWell(
-                  onTap: _stopMetronome,
-                  child: Icon(
-                    Icons.close,
-                    size: 20,
-                    color: Theme.of(context).colorScheme.onPrimary,
-                  ),
-                ),
-              ],
-            ],
+            children: rowChildren,
           ),
         ),
       ),
@@ -1553,21 +1554,6 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     );
   }
 
-  void _initializeVideoPlayer(String videoUrl) {
-    final videoId = YoutubePlayer.convertUrlToId(videoUrl);
-    if (videoId != null) {
-      _videoController = YoutubePlayerController(
-        initialVideoId: videoId,
-        flags: YoutubePlayerFlags(
-          autoPlay: true,
-        ),
-      );
-      setState(() {
-        _isVideoVisible = true;
-      });
-    }
-  }
-
   Widget _buildVideoPlayer() {
     if (!_isVideoVisible || _videoController == null) {
       return const SizedBox.shrink();
@@ -1587,6 +1573,7 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
           width: 200,
           height: 120,
           decoration: BoxDecoration(
+            color: Colors.black,
             borderRadius: BorderRadius.circular(8),
             boxShadow: [
               BoxShadow(
@@ -1602,10 +1589,18 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
               controller: _videoController!,
               showVideoProgressIndicator: true,
               progressIndicatorColor: Theme.of(context).colorScheme.primary,
-              progressColors: ProgressBarColors(
-                playedColor: Theme.of(context).colorScheme.primary,
-                handleColor: Theme.of(context).colorScheme.primary,
-              ),
+              actionsPadding: const EdgeInsets.all(4),
+              bottomActions: [
+                CurrentPosition(),
+                ProgressBar(
+                  isExpanded: true,
+                  colors: ProgressBarColors(
+                    playedColor: Theme.of(context).colorScheme.primary,
+                    handleColor: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+                RemainingDuration(),
+              ],
             ),
           ),
         ),
@@ -1613,13 +1608,38 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     );
   }
 
+  void _initializeVideoPlayer(String videoUrl) {
+    final videoId = YoutubePlayer.convertUrlToId(videoUrl);
+    if (videoId != null) {
+      _videoController = YoutubePlayerController(
+        initialVideoId: videoId,
+        flags: const YoutubePlayerFlags(
+          autoPlay: true,
+          enableCaption: false,
+          useHybridComposition: true,
+          forceHD: false,
+          showLiveFullscreenButton: false,
+          disableDragSeek: false,
+          hideControls: false,
+          controlsVisibleAtStart: true,
+          mute: false,
+        ),
+      );
+      setState(() {
+        _isVideoVisible = true;
+        _videoOffsetX = 0;
+        _videoOffsetY = 0;
+      });
+    }
+  }
+
   Widget _buildVideoReferenceButton(Map<String, dynamic> songData) {
     final videoReference = songData['videoReference'];
     if (videoReference == null) return const SizedBox.shrink();
 
     return IconButton(
-      icon: const Icon(Icons.video_library),
-      tooltip: 'Ver video de referencia',
+      icon: Icon(_isVideoVisible ? Icons.close : Icons.video_library),
+      tooltip: _isVideoVisible ? 'Cerrar video' : 'Ver video de referencia',
       onPressed: () {
         if (!_isVideoVisible) {
           _initializeVideoPlayer(videoReference['url']);
