@@ -302,10 +302,15 @@ class _TeleprompterScreenState extends State<TeleprompterScreen> {
   }
 
   Widget _buildHighlightedLyrics(BuildContext context) {
+    // Primero limpiar la letra de acordes y comentarios
+    final cleanedLyrics = _cleanLyrics(_lyrics);
+
     final referenceRegex = RegExp(r'_([^_]+)_');
-    final parts = _lyrics.split(referenceRegex);
-    final references =
-        referenceRegex.allMatches(_lyrics).map((m) => m.group(1)!).toList();
+    final parts = cleanedLyrics.split(referenceRegex);
+    final references = referenceRegex
+        .allMatches(cleanedLyrics)
+        .map((m) => m.group(1)!)
+        .toList();
 
     List<TextSpan> textSpans = [];
 

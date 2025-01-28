@@ -16,52 +16,49 @@ class PlaylistScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Playlists', style: AppTextStyles.appBarTitle(context)),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _createPlaylist(context),
-        child: const Icon(Icons.add),
-      ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('playlists')
-            .where('groupId', isEqualTo: groupId)
-            .orderBy('date', descending: true)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
-          }
+    return Column(
+      children: [
+        Expanded(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('playlists')
+                .where('groupId', isEqualTo: groupId)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
 
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final playlists = snapshot.data!.docs;
-
-          return ListView.builder(
-            itemCount: playlists.length,
-            itemBuilder: (context, index) {
-              final playlist = playlists[index];
-              final data = playlist.data() as Map<String, dynamic>;
-
-              return Card(
-                margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                child: ListTile(
-                  title: Text(data['name']),
-                  subtitle: Text(
-                    DateFormat('dd/MM/yyyy').format(data['date'].toDate()),
+              final playlists = snapshot.data!.docs;
+              if (playlists.isEmpty) {
+                return Center(
+                  child: Text(
+                    'No hay playlists',
+                    style: AppTextStyles.subtitle(context),
                   ),
-                  trailing: Text('${data['songs'].length} canciones'),
-                  onTap: () => _openPlaylist(context, playlist.id),
-                ),
+                );
+              }
+
+              return ListView.builder(
+                itemCount: playlists.length,
+                itemBuilder: (context, index) {
+                  final playlist = playlists[index];
+                  final data = playlist.data() as Map<String, dynamic>;
+                  return ListTile(
+                    title: Text(data['name'] ?? 'Sin nombre'),
+                    subtitle:
+                        Text('${(data['songs'] as List).length} canciones'),
+                    leading: const Icon(Icons.queue_music),
+                    onTap: () {
+                      _openPlaylist(context, playlist.id);
+                    },
+                  );
+                },
               );
             },
-          );
-        },
-      ),
+          ),
+        ),
+      ],
     );
   }
 

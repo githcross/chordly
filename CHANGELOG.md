@@ -5,6 +5,37 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/),
 y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2025-02-XX
+
+### Añadido
+- Exportación de canciones a PDF con formato mejorado
+  - Soporte para múltiples páginas
+  - Acordes en color azul
+  - Secciones (entre guiones bajos) en amarillo
+  - Notas (entre corchetes) en azul
+  - Manejo mejorado de caracteres especiales
+- Selección múltiple de canciones para exportación
+  - Selección con toque largo
+  - Checkbox para selección rápida
+  - Botón flotante para exportar selección
+- Sistema de copias de seguridad
+  - Exportación de canciones del grupo
+  - Restauración desde archivo de backup
+  - Importación como borradores
+
+### Cambiado
+- Interfaz más limpia en la lista de canciones
+  - Eliminación de tags visuales para mejor legibilidad
+  - Diseño más compacto y eficiente
+- Mejora en la navegación de playlists
+  - Acceso directo a detalles de playlist
+  - Contador de canciones en la lista
+
+### Corregido
+- Navegación a detalles de playlist desde la lista
+- Manejo de caracteres especiales en la exportación PDF
+- Visualización de canciones en modo selección
+
 ## [1.1.0] - 2025-01-XX
 
 ### Añadido

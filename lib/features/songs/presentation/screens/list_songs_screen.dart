@@ -30,128 +30,39 @@ class ListSongsScreen extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<ListSongsScreen> createState() => _ListSongsScreenState();
+  ListSongsScreenState createState() => ListSongsScreenState();
 }
 
-class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
-  bool _ascendingOrder = true;
-  Set<String> _selectedTags = {};
-  String? _lastDeletedSongId;
-  String? _lastDeletedSongTitle;
-  OverlayEntry? _overlayEntry;
-  final _searchController = TextEditingController();
-  bool _isSelectionMode = false;
-  Set<String> _selectedSongs = {};
+class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
+  bool ascendingOrder = true;
+  Set<String> selectedTags = {};
+  String? lastDeletedSongId;
+  String? lastDeletedSongTitle;
+  OverlayEntry? overlayEntry;
+  final searchController = TextEditingController();
+  bool isSelectionMode = false;
+  Set<String> selectedSongs = {};
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          _isSelectionMode
-              ? '${_selectedSongs.length} seleccionados'
-              : 'Canciones',
-          style: AppTextStyles.appBarTitle(context),
-        ),
-        leading: _isSelectionMode
-            ? IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: () {
-                  setState(() {
-                    _isSelectionMode = false;
-                    _selectedSongs.clear();
-                  });
-                },
-              )
-            : null,
-        actions: [
-          if (_isSelectionMode) ...[
-            IconButton(
-              icon: const Icon(Icons.share),
-              onPressed: _selectedSongs.isNotEmpty
-                  ? () => _shareSongs(_selectedSongs.toList())
-                  : null,
-            ),
-          ] else ...[
-            IconButton(
-              icon: Icon(
-                  _ascendingOrder ? Icons.arrow_upward : Icons.arrow_downward),
-              tooltip: _ascendingOrder
-                  ? 'Ordenar descendente'
-                  : 'Ordenar ascendente',
-              onPressed: () {
-                setState(() {
-                  _ascendingOrder = !_ascendingOrder;
-                });
-              },
-            ),
-            IconButton(
-              icon: Badge(
-                isLabelVisible: _selectedTags.isNotEmpty,
-                label: Text(_selectedTags.length.toString()),
-                child: const Icon(Icons.tag),
-              ),
-              tooltip: 'Filtrar por tags',
-              onPressed: _showTagFilter,
-            ),
-            IconButton(
-              icon: const Icon(Icons.search),
-              tooltip: 'Buscar canciones',
-              onPressed: () {
-                showSearch(
-                  context: context,
-                  delegate: SongSearchDelegate(
-                    groupId: widget.group.id,
-                    onSongSelected: (songId) {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => SongDetailsScreen(
-                            songId: songId,
-                            groupId: widget.group.id,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                );
-              },
-            ),
-            IconButton(
-              icon: const Icon(Icons.more_vert),
-              onPressed: () => _showOptions(context),
-            ),
-          ],
-        ],
-      ),
       body: Column(
         children: [
           Expanded(
             child: StreamBuilder<List<QueryDocumentSnapshot>>(
               stream: _getSongsStream(),
               builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }
-
-                if (snapshot.connectionState == ConnectionState.waiting) {
+                if (!snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                final songs = snapshot.data?.where((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  // Filtrar por término de búsqueda si existe
-                  if (_searchController.text.isNotEmpty) {
-                    final searchTerm = _searchController.text.toLowerCase();
-                    final title = (data['title'] as String).toLowerCase();
-                    return title.contains(searchTerm);
-                  }
-                  return true;
-                }).toList();
-
-                if (songs == null || songs.isEmpty) {
-                  return const Center(
-                    child: Text('No se encontraron canciones'),
+                final songs = snapshot.data!;
+                if (songs.isEmpty) {
+                  return Center(
+                    child: Text(
+                      'No hay canciones',
+                      style: AppTextStyles.subtitle(context),
+                    ),
                   );
                 }
 
@@ -161,12 +72,19 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
           ),
         ],
       ),
+      floatingActionButton: isSelectionMode && selectedSongs.isNotEmpty
+          ? FloatingActionButton.extended(
+              onPressed: () => shareSongs(selectedSongs.toList()),
+              label: const Text('Exportar PDF'),
+              icon: const Icon(Icons.picture_as_pdf),
+            )
+          : null,
     );
   }
 
   Stream<List<QueryDocumentSnapshot>> _getSongsStream() {
     final user = ref.read(authProvider).value;
-    if (user == null) return const Stream.empty();
+    if (user == null) return Stream.value([]);
 
     // Query para canciones publicadas
     final publishedQuery = FirebaseFirestore.instance
@@ -185,36 +103,40 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
         .where('createdBy', isEqualTo: user.uid)
         .snapshots();
 
-    // Combinar los streams y ordenar
+    // Combinar los streams y aplicar filtros y ordenamiento
     return Rx.combineLatest2(
       publishedQuery,
       draftsQuery,
       (QuerySnapshot published, QuerySnapshot drafts) {
         final allDocs = [...published.docs, ...drafts.docs];
-        // Filtrar por tags si hay seleccionados
-        final filteredDocs = _selectedTags.isEmpty
-            ? allDocs
-            : allDocs.where((doc) {
-                final data = doc.data() as Map<String, dynamic>;
-                final tags = List<String>.from(data['tags'] ?? []);
-                return _selectedTags.every((tag) => tags.contains(tag));
-              }).toList();
 
+        // Filtrar por tags si hay seleccionados
+        var filteredDocs = allDocs;
+        if (selectedTags.isNotEmpty) {
+          filteredDocs = allDocs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final tags = List<String>.from(data['tags'] ?? []);
+            return selectedTags.every((tag) => tags.contains(tag));
+          }).toList();
+        }
+
+        // Ordenar por título
         filteredDocs.sort((a, b) {
           final aData = a.data() as Map<String, dynamic>;
           final bData = b.data() as Map<String, dynamic>;
-          final aTitle = aData['title'] as String;
-          final bTitle = bData['title'] as String;
-          return _ascendingOrder
+          final aTitle = (aData['title'] as String).toLowerCase();
+          final bTitle = (bData['title'] as String).toLowerCase();
+          return ascendingOrder
               ? aTitle.compareTo(bTitle)
               : bTitle.compareTo(aTitle);
         });
+
         return filteredDocs;
       },
     );
   }
 
-  Future<void> _shareSongs(List<String> songIds) async {
+  Future<void> shareSongs(List<String> songIds) async {
     try {
       if (songIds.isEmpty) return;
 
@@ -239,8 +161,8 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
       await Share.shareFiles([pdfPath], text: 'Canciones compartidas');
 
       setState(() {
-        _isSelectionMode = false;
-        _selectedSongs.clear();
+        isSelectionMode = false;
+        selectedSongs.clear();
       });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -257,36 +179,248 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
         PdfStandardFont(PdfFontFamily.helvetica, 14);
     final PdfStandardFont contentFont =
         PdfStandardFont(PdfFontFamily.helvetica, 12);
+    final PdfStandardFont chordFont =
+        PdfStandardFont(PdfFontFamily.helvetica, 10);
+
+    // Colores para diferentes elementos
+    final PdfColor chordColor = PdfColor(0, 122, 255); // Azul para acordes
+    final PdfColor sectionColor =
+        PdfColor(255, 196, 0); // Amarillo para secciones
+    final PdfColor noteColor = PdfColor(0, 122, 255); // Azul para notas [...]
+
+    // Función para limpiar caracteres no soportados
+    String cleanText(String text) {
+      return text
+          .replaceAll('á', 'a')
+          .replaceAll('é', 'e')
+          .replaceAll('í', 'i')
+          .replaceAll('ó', 'o')
+          .replaceAll('ú', 'u')
+          .replaceAll('ñ', 'n')
+          .replaceAll('Á', 'A')
+          .replaceAll('É', 'E')
+          .replaceAll('Í', 'I')
+          .replaceAll('Ó', 'O')
+          .replaceAll('Ú', 'U')
+          .replaceAll('Ñ', 'N')
+          .replaceAll(RegExp(r'[^\x20-\x7E]'),
+              ''); // Mantener solo caracteres ASCII imprimibles
+    }
 
     for (var song in songs) {
       final data = song.data() as Map<String, dynamic>;
       final PdfPage page = document.pages.add();
-      final PdfGraphics graphics = page.graphics;
+      var graphics = page.graphics;
       final Rect bounds = Rect.fromLTWH(40, 40, page.getClientSize().width - 80,
           page.getClientSize().height - 80);
 
       // Agregar título
       graphics.drawString(
-        data['title'],
+        cleanText(data['title']),
         titleFont,
         bounds: Rect.fromLTWH(bounds.left, bounds.top, bounds.width, 30),
       );
 
       // Agregar autor
-      graphics.drawString(
-        'Autor: ${data['author']}',
-        subtitleFont,
-        bounds: Rect.fromLTWH(bounds.left, bounds.top + 40, bounds.width, 20),
-      );
+      if (data['author'] != null && data['author'].toString().isNotEmpty) {
+        graphics.drawString(
+          'Autor: ${cleanText(data['author'])}',
+          subtitleFont,
+          bounds: Rect.fromLTWH(bounds.left, bounds.top + 40, bounds.width, 20),
+        );
+      }
 
-      // Agregar letra
-      graphics.drawString(
-        data['lyrics'],
-        contentFont,
-        bounds: Rect.fromLTWH(
-            bounds.left, bounds.top + 80, bounds.width, bounds.height - 80),
-        format: PdfStringFormat(lineSpacing: 5),
-      );
+      // Agregar tags si existen
+      if (data['tags'] != null && (data['tags'] as List).isNotEmpty) {
+        final tags = (data['tags'] as List)
+            .map((tag) => cleanText(tag.toString()))
+            .join(', ');
+        graphics.drawString(
+          'Tags: $tags',
+          subtitleFont,
+          bounds: Rect.fromLTWH(bounds.left, bounds.top + 60, bounds.width, 20),
+        );
+      }
+
+      // Procesar y agregar letra con formato
+      if (data['lyrics'] != null && data['lyrics'].toString().isNotEmpty) {
+        final lyrics = data['lyrics'].toString();
+        final lines = lyrics.split('\n');
+        double yPosition = bounds.top + 100;
+        final lineHeight = contentFont.height * 1.5;
+
+        for (var line in lines) {
+          // Si no hay suficiente espacio en la página actual, crear una nueva
+          if (yPosition + lineHeight > bounds.bottom) {
+            final newPage = document.pages.add();
+            graphics = newPage.graphics;
+            yPosition = bounds.top;
+          }
+
+          // Procesar línea para diferentes formatos
+          if (line.contains('(') && line.contains(')')) {
+            // Línea con acordes
+            final parts = line.split(RegExp(r'(\([^)]+\))'));
+            double xPosition = bounds.left;
+
+            for (var i = 0; i < parts.length; i++) {
+              if (i % 2 == 0) {
+                // Texto normal
+                graphics.drawString(
+                  cleanText(parts[i]),
+                  contentFont,
+                  brush: PdfSolidBrush(PdfColor(0, 0, 0)),
+                  bounds: Rect.fromLTWH(
+                      xPosition, yPosition, bounds.width, lineHeight),
+                );
+                xPosition +=
+                    contentFont.measureString(cleanText(parts[i])).width;
+              } else {
+                // Acordes
+                graphics.drawString(
+                  cleanText(parts[i]),
+                  chordFont,
+                  brush: PdfSolidBrush(chordColor),
+                  bounds: Rect.fromLTWH(
+                      xPosition, yPosition, bounds.width, lineHeight),
+                );
+                xPosition += chordFont.measureString(cleanText(parts[i])).width;
+              }
+            }
+          } else if (line.startsWith('_') && line.endsWith('_')) {
+            // Secciones (entre guiones bajos)
+            graphics.drawString(
+              cleanText(line.substring(1, line.length - 1)),
+              contentFont,
+              brush: PdfSolidBrush(sectionColor),
+              bounds: Rect.fromLTWH(
+                  bounds.left, yPosition, bounds.width, lineHeight),
+            );
+          } else if (line.contains('[') && line.contains(']')) {
+            // Notas (entre corchetes)
+            final parts = line.split(RegExp(r'(\[[^\]]+\])'));
+            double xPosition = bounds.left;
+
+            for (var i = 0; i < parts.length; i++) {
+              if (i % 2 == 0) {
+                // Texto normal
+                graphics.drawString(
+                  cleanText(parts[i]),
+                  contentFont,
+                  brush: PdfSolidBrush(PdfColor(0, 0, 0)),
+                  bounds: Rect.fromLTWH(
+                      xPosition, yPosition, bounds.width, lineHeight),
+                );
+                xPosition +=
+                    contentFont.measureString(cleanText(parts[i])).width;
+              } else {
+                // Notas
+                graphics.drawString(
+                  cleanText(parts[i]),
+                  contentFont,
+                  brush: PdfSolidBrush(noteColor),
+                  bounds: Rect.fromLTWH(
+                      xPosition, yPosition, bounds.width, lineHeight),
+                );
+                xPosition +=
+                    contentFont.measureString(cleanText(parts[i])).width;
+              }
+            }
+          } else {
+            // Texto normal
+            graphics.drawString(
+              cleanText(line),
+              contentFont,
+              bounds: Rect.fromLTWH(
+                  bounds.left, yPosition, bounds.width, lineHeight),
+            );
+          }
+
+          yPosition += lineHeight;
+        }
+      }
+    }
+  }
+
+  Future<void> showBackupDialog() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Crear copia de seguridad'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Se exportarán:'),
+            const SizedBox(height: 8),
+            const Text('• Todas las canciones del grupo'),
+            const Text('• Configuración y formato de cada canción'),
+            const Text('• Acordes y notas'),
+            const SizedBox(height: 16),
+            Text(
+              'El archivo se guardará con el nombre: chordly_backup_${widget.group.name}_${DateFormat('yyyyMMdd').format(DateTime.now())}.json',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Exportar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      _exportBackup();
+    }
+  }
+
+  Future<void> showRestoreDialog() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Restaurar desde backup'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '⚠️ Importante',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Al importar canciones:',
+              style: TextStyle(fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 4),
+            const Text('• Se agregarán como nuevas canciones'),
+            const Text('• No se sobrescribirán las existentes'),
+            const Text('• Se mantendrá el formato original'),
+            const Text('• Se importarán como borradores'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Seleccionar archivo'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      _importBackup();
     }
   }
 
@@ -336,13 +470,13 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
             children: allTags.map((tag) {
               return FilterChip(
                 label: Text(tag),
-                selected: _selectedTags.contains(tag),
+                selected: selectedTags.contains(tag),
                 onSelected: (selected) {
                   setState(() {
                     if (selected) {
-                      _selectedTags.add(tag);
+                      selectedTags.add(tag);
                     } else {
-                      _selectedTags.remove(tag);
+                      selectedTags.remove(tag);
                     }
                   });
                 },
@@ -354,7 +488,7 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
           TextButton(
             onPressed: () {
               setState(() {
-                _selectedTags.clear();
+                selectedTags.clear();
               });
               Navigator.pop(context);
             },
@@ -370,8 +504,8 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
   }
 
   void _showDeleteBanner(String songTitle) {
-    _overlayEntry?.remove();
-    _overlayEntry = OverlayEntry(
+    overlayEntry?.remove();
+    overlayEntry = OverlayEntry(
       builder: (context) => Positioned(
         top: MediaQuery.of(context).padding.top + 10,
         left: 20,
@@ -418,10 +552,10 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
                     onPressed: () async {
                       await FirebaseFirestore.instance
                           .collection('songs')
-                          .doc(_lastDeletedSongId)
+                          .doc(lastDeletedSongId)
                           .update({'isActive': true});
-                      _overlayEntry?.remove();
-                      _overlayEntry = null;
+                      overlayEntry?.remove();
+                      overlayEntry = null;
                     },
                     child: const Text('DESHACER'),
                   ),
@@ -433,11 +567,11 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
       ),
     );
 
-    Overlay.of(context).insert(_overlayEntry!);
+    Overlay.of(context).insert(overlayEntry!);
 
     Future.delayed(const Duration(seconds: 3), () {
-      _overlayEntry?.remove();
-      _overlayEntry = null;
+      overlayEntry?.remove();
+      overlayEntry = null;
     });
   }
 
@@ -485,7 +619,7 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
                     subtitle: const Text('Crear copia de seguridad del grupo'),
                     onTap: () {
                       Navigator.pop(context);
-                      _showBackupDialog();
+                      showBackupDialog();
                     },
                   ),
                   ListTile(
@@ -494,7 +628,7 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
                     subtitle: const Text('Restaurar desde copia de seguridad'),
                     onTap: () {
                       Navigator.pop(context);
-                      _showRestoreDialog();
+                      showRestoreDialog();
                     },
                   ),
                 ],
@@ -504,88 +638,6 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
         },
       ),
     );
-  }
-
-  Future<void> _showBackupDialog() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Crear copia de seguridad'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Se exportarán:'),
-            const SizedBox(height: 8),
-            const Text('• Todas las canciones del grupo'),
-            const Text('• Configuración y formato de cada canción'),
-            const Text('• Acordes y notas'),
-            const SizedBox(height: 16),
-            Text(
-              'El archivo se guardará con el nombre: chordly_backup_${widget.group.name}_${DateFormat('yyyyMMdd').format(DateTime.now())}.json',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Exportar'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      _exportBackup();
-    }
-  }
-
-  Future<void> _showRestoreDialog() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Restaurar desde backup'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '⚠️ Importante',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Al importar canciones:',
-              style: TextStyle(fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(height: 4),
-            const Text('• Se agregarán como nuevas canciones'),
-            const Text('• No se sobrescribirán las existentes'),
-            const Text('• Se mantendrá el formato original'),
-            const Text('• Se importarán como borradores'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Seleccionar archivo'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      _importBackup();
-    }
   }
 
   void _addSong(BuildContext context) {
@@ -599,7 +651,7 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
 
   @override
   void dispose() {
-    _overlayEntry?.remove();
+    overlayEntry?.remove();
     super.dispose();
   }
 
@@ -660,8 +712,8 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
                   : null,
               onDismissed: canDelete
                   ? (direction) async {
-                      _lastDeletedSongId = songId;
-                      _lastDeletedSongTitle = songData['title'];
+                      lastDeletedSongId = songId;
+                      lastDeletedSongTitle = songData['title'];
 
                       await FirebaseFirestore.instance
                           .collection('songs')
@@ -669,7 +721,7 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
                           .update({'isActive': false});
 
                       if (mounted) {
-                        _showDeleteBanner(_lastDeletedSongTitle!);
+                        _showDeleteBanner(lastDeletedSongTitle!);
                       }
                     }
                   : null,
@@ -677,6 +729,20 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
                 elevation: 0,
                 margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 child: ListTile(
+                  leading: isSelectionMode
+                      ? Checkbox(
+                          value: selectedSongs.contains(songId),
+                          onChanged: (bool? value) {
+                            setState(() {
+                              if (value == true) {
+                                selectedSongs.add(songId);
+                              } else {
+                                selectedSongs.remove(songId);
+                              }
+                            });
+                          },
+                        )
+                      : null,
                   title: Text(
                     songData['title'],
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -685,55 +751,40 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
                           color: Theme.of(context).colorScheme.primary,
                         ),
                   ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        songData['author'] ?? '',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Theme.of(context).colorScheme.secondary,
-                            ),
-                      ),
-                      if (songData['baseKey'] != null) ...[
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.music_note,
-                              size: 16,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .primary
-                                  .withOpacity(0.7),
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              songData['baseKey'],
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
-                                  ?.copyWith(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .primary
-                                        .withOpacity(0.7),
-                                  ),
-                            ),
-                          ],
+                  subtitle: Text(
+                    songData['author'] ?? '',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.secondary,
                         ),
-                      ],
-                    ],
                   ),
                   onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => SongDetailsScreen(
-                          songId: songId,
-                          groupId: widget.group.id,
+                    if (isSelectionMode) {
+                      setState(() {
+                        if (selectedSongs.contains(songId)) {
+                          selectedSongs.remove(songId);
+                        } else {
+                          selectedSongs.add(songId);
+                        }
+                      });
+                    } else {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => SongDetailsScreen(
+                            songId: songId,
+                            groupId: widget.group.id,
+                          ),
                         ),
-                      ),
-                    );
+                      );
+                    }
+                  },
+                  onLongPress: () {
+                    setState(() {
+                      if (!isSelectionMode) {
+                        isSelectionMode = true;
+                        selectedSongs.add(songId);
+                      }
+                    });
                   },
                 ),
               ),
@@ -746,281 +797,117 @@ class _ListSongsScreenState extends ConsumerState<ListSongsScreen> {
 
   Future<void> _exportBackup() async {
     try {
-      final songs = await FirebaseFirestore.instance
+      // Obtener todas las canciones del grupo
+      final songsSnapshot = await FirebaseFirestore.instance
           .collection('songs')
           .where('groupId', isEqualTo: widget.group.id)
           .where('isActive', isEqualTo: true)
           .get();
 
-      final List<Map<String, dynamic>> backupData = [];
+      final songs = songsSnapshot.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id; // Incluir el ID del documento
+        return data;
+      }).toList();
 
-      for (var doc in songs.docs) {
-        final songData = doc.data();
-        // Preservar todos los campos relevantes para el formato
-        final cleanData = {
-          'title': songData['title'],
-          'author': songData['author'],
-          'lyrics': songData['lyrics'],
-          'lyricsTranspose': songData['lyricsTranspose'],
-          'baseKey': songData['baseKey'],
-          'tempo': songData['tempo'],
-          'tags': songData['tags'],
-          'notes': songData['notes'],
-          // Campos adicionales para preservar formato
-          'format': {
-            'spacing': songData['format']?['spacing'] ?? 1.5,
-            'alignment': songData['format']?['alignment'] ?? 'left',
-            'indentation': songData['format']?['indentation'] ?? 0.0,
-            'chordPosition': songData['format']?['chordPosition'] ?? 'above',
-            'fontSize': songData['format']?['fontSize'] ?? 16.0,
-            'chordFontSize': songData['format']?['chordFontSize'] ?? 14.0,
-          },
-          // Metadatos originales
-          'originalCreatedAt':
-              songData['createdAt']?.toDate().toIso8601String(),
-          'originalUpdatedAt':
-              songData['updatedAt']?.toDate().toIso8601String(),
-          'status': songData['status'] ?? 'borrador',
-          'version': songData['version'] ?? 1,
-          // Campos de visualización
-          'displayOptions': {
-            'showChords': songData['displayOptions']?['showChords'] ?? true,
-            'showNotes': songData['displayOptions']?['showNotes'] ?? true,
-            'showTempo': songData['displayOptions']?['showTempo'] ?? true,
-          },
-        };
-        backupData.add(cleanData);
-      }
-
-      // Crear el objeto de backup con metadatos
+      // Crear el objeto de backup
       final backup = {
-        'version': '1.0',
-        'timestamp': DateTime.now().toIso8601String(),
-        'groupName': widget.group.name,
         'groupId': widget.group.id,
-        'totalSongs': songs.docs.length,
-        'songs': backupData,
+        'groupName': widget.group.name,
+        'exportDate': DateTime.now().toIso8601String(),
+        'songs': songs,
       };
 
-      // Convertir a JSON con formato legible (usando dart:convert)
-      final jsonString = JsonEncoder.withIndent('  ').convert(backup);
+      // Convertir a JSON
+      final jsonString = jsonEncode(backup);
 
       // Guardar el archivo
-      final directory = await getApplicationDocumentsDirectory();
-      final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final fileName = 'chordly_backup_${timestamp}.json';
-      final file = File('${directory.path}/$fileName');
+      final tempDir = await getTemporaryDirectory();
+      final fileName =
+          'chordly_backup_${widget.group.name}_${DateFormat('yyyyMMdd').format(DateTime.now())}.json';
+      final file = File('${tempDir.path}/$fileName');
       await file.writeAsString(jsonString);
 
       // Compartir el archivo
-      await Share.shareFiles(
-        [file.path],
-        text: 'Backup de canciones de ${widget.group.name}',
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Backup creado exitosamente'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      await Share.shareFiles([file.path],
+          text: 'Copia de seguridad de canciones');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al crear backup: $e'),
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al exportar: $e')),
+      );
     }
   }
 
   Future<void> _importBackup() async {
     try {
-      // Abrir selector de archivos
+      // Seleccionar archivo
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['json'],
       );
 
-      if (result == null) return;
+      if (result == null || result.files.isEmpty) return;
 
-      final file = File(result.files.single.path!);
+      // Leer el archivo
+      final file = File(result.files.first.path!);
       final jsonString = await file.readAsString();
       final backup = jsonDecode(jsonString) as Map<String, dynamic>;
 
-      // Validar versión y formato
-      if (backup['version'] != '1.0') {
-        throw 'Versión de backup no compatible';
+      // Verificar que es un backup válido
+      if (!backup.containsKey('songs')) {
+        throw Exception('Archivo de backup inválido');
       }
 
-      // Mostrar diálogo de confirmación
-      if (!mounted) return;
-      final confirm = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Importar canciones'),
-          content: Text(
-              '¿Deseas importar ${backup['totalSongs']} canciones del grupo "${backup['groupName']}"?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Importar'),
-            ),
-          ],
-        ),
-      );
+      // Obtener el usuario actual
+      final user = ref.read(authProvider).value;
+      if (user == null) throw Exception('Usuario no autenticado');
 
-      if (confirm != true) return;
-
-      // Importar canciones preservando el formato
+      // Importar cada canción
       final batch = FirebaseFirestore.instance.batch();
       final songs = backup['songs'] as List;
 
-      for (var songData in songs) {
-        final docRef = FirebaseFirestore.instance.collection('songs').doc();
-        final now = DateTime.now();
+      for (final song in songs) {
+        final songData = Map<String, dynamic>.from(song as Map);
+        songData['groupId'] = widget.group.id;
+        songData['createdBy'] = user.uid;
+        songData['createdAt'] = FieldValue.serverTimestamp();
+        songData['updatedAt'] = FieldValue.serverTimestamp();
+        songData['status'] = 'borrador';
+        songData['isActive'] = true;
 
-        // Preservar el formato original
-        final importedData = {
-          'title': songData['title'],
-          'author': songData['author'],
-          'lyrics': songData['lyrics'],
-          'lyricsTranspose': songData['lyricsTranspose'],
-          'baseKey': songData['baseKey'],
-          'tempo': songData['tempo'],
-          'tags': songData['tags'] ?? [],
-          'notes': songData['notes'],
-          // Preservar formato
-          'format': songData['format'] ??
-              {
-                'spacing': 1.5,
-                'alignment': 'left',
-                'indentation': 0.0,
-                'chordPosition': 'above',
-                'fontSize': 16.0,
-                'chordFontSize': 14.0,
-              },
-          // Preservar opciones de visualización
-          'displayOptions': songData['displayOptions'] ??
-              {
-                'showChords': true,
-                'showNotes': true,
-                'showTempo': true,
-              },
-          // Datos requeridos
-          'groupId': widget.group.id,
-          'isActive': true,
-          'status': songData['status'] ?? 'borrador',
-          'version': songData['version'] ?? 1,
-          // Fechas y usuarios
-          'createdAt': now,
-          'updatedAt': now,
-          'originalCreatedAt': songData['originalCreatedAt'],
-          'originalUpdatedAt': songData['originalUpdatedAt'],
-          'createdBy': FirebaseAuth.instance.currentUser?.uid,
-          'lastUpdatedBy': FirebaseAuth.instance.currentUser?.uid,
-        };
+        // Remover el ID del documento original
+        songData.remove('id');
 
-        batch.set(docRef, importedData);
+        final newSongRef = FirebaseFirestore.instance.collection('songs').doc();
+        batch.set(newSongRef, songData);
       }
 
       await batch.commit();
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Canciones importadas exitosamente'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al importar canciones: $e'),
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<bool> _isSongInPlaylist(String songId) async {
-    try {
-      // Buscar en todas las playlists del grupo
-      final playlistsQuery = await FirebaseFirestore.instance
-          .collection('playlists')
-          .where('groupId', isEqualTo: widget.group.id)
-          .where('isActive', isEqualTo: true)
-          .get();
-
-      for (var playlist in playlistsQuery.docs) {
-        final songs = List<String>.from(playlist.data()['songs'] ?? []);
-        if (songs.contains(songId)) {
-          return true;
-        }
-      }
-      return false;
-    } catch (e) {
-      print('Error al verificar playlists: $e');
-      return false;
-    }
-  }
-
-  Future<bool> _confirmDelete(BuildContext context,
-      Map<String, dynamic> songData, String songId) async {
-    // Verificar si la canción está en alguna playlist
-    final inPlaylist = await _isSongInPlaylist(songId);
-
-    if (inPlaylist) {
-      if (!mounted) return false;
-
-      // Mostrar mensaje de error si la canción está en uso
-      await showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('No se puede eliminar'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                  'La canción "${songData['title']}" está en uso en una o más playlists.'),
-              const SizedBox(height: 8),
-              const Text(
-                'Para eliminarla, primero debes quitarla de todas las playlists.',
-                style: TextStyle(fontSize: 14, color: Colors.grey),
-              ),
-            ],
-          ),
-          actions: [
-            FilledButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Entendido'),
-            ),
-          ],
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${songs.length} canciones importadas como borradores'),
         ),
       );
-      return false;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al importar: $e')),
+      );
     }
+  }
 
-    // Si no está en uso, mostrar confirmación normal
-    if (!mounted) return false;
+  Future<bool> _confirmDelete(
+    BuildContext context,
+    Map<String, dynamic> songData,
+    String songId,
+  ) async {
     return await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('Confirmar eliminación'),
+            title: const Text('Eliminar canción'),
             content: Text(
                 '¿Estás seguro de que quieres eliminar "${songData['title']}"?'),
             actions: [
