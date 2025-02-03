@@ -376,14 +376,37 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
       onPageChanged: (index) {
         setState(() {
           _currentIndex = index;
-          _isInitialized = false; // Resetear para cargar nueva canción
+          _isInitialized = false;
+          // Resetear el estado de la canción
+          _originalLyrics = '';
+          _transposedLyrics = '';
+          _isPlayingMetronome = false;
+          _metronomeTimer?.cancel();
+          _isVideoVisible = false;
+          _videoController?.dispose();
+          _videoController = null;
+          _videoOffsetX = 0;
+          _videoOffsetY = 0;
+          _scale = 1.0;
+          _fontSize = 16.0;
+          _landscapeFontSize = 16.0;
         });
+
+        // Actualizar el stream con la nueva canción
+        _songStream = FirebaseFirestore.instance
+            .collection('songs')
+            .doc(widget.playlistSongs![index])
+            .snapshots();
       },
       itemBuilder: (context, index) {
+        // Asegurarnos de que estamos usando el ID correcto de la canción
+        final currentSongId = widget.playlistSongs![index];
+
         return StreamBuilder<DocumentSnapshot>(
+          // Usar un stream específico para cada canción
           stream: FirebaseFirestore.instance
               .collection('songs')
-              .doc(widget.playlistSongs![index])
+              .doc(currentSongId)
               .snapshots(),
           builder: (context, snapshot) {
             if (!snapshot.hasData) {
@@ -398,10 +421,16 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
 
             // Inicializar las letras cuando se carga el documento
             if (!_isInitialized) {
-              _originalLyrics = songData['lyrics'] ?? '';
-              _transposedLyrics =
-                  songData['lyricsTranspose'] ?? songData['lyrics'] ?? '';
-              _isInitialized = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  setState(() {
+                    _originalLyrics = songData['lyrics'] ?? '';
+                    _transposedLyrics =
+                        songData['lyricsTranspose'] ?? songData['lyrics'] ?? '';
+                    _isInitialized = true;
+                  });
+                }
+              });
             }
 
             return StreamBuilder<GroupRole>(
