@@ -303,9 +303,10 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
       );
 
       // Subir a Cloudinary
-      final imageUrl = await CloudinaryService.uploadImage(
-        File(pickedFile.path),
-        'group_images',
+      final imageUrl = await CloudinaryService.uploadFile(
+        file: File(pickedFile.path),
+        folder: 'group_images',
+        resourceType: 'image',
       );
 
       // Actualizar URL en Firestore

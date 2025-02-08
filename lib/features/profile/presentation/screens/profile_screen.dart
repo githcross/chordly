@@ -66,13 +66,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
       if (pickedFile != null) {
         final file = File(pickedFile.path);
-        final downloadURL =
-            await CloudinaryService.uploadImage(file, 'profile_pictures');
+        final imageUrl = await CloudinaryService.uploadFile(
+          file: file,
+          folder: 'profile_pictures',
+          resourceType: 'image',
+        );
 
-        await user.updatePhotoURL(downloadURL);
+        await user.updatePhotoURL(imageUrl);
         await ref
             .read(firestoreServiceProvider)
-            .updateUserProfilePicture(user.uid, downloadURL);
+            .updateUserProfilePicture(user.uid, imageUrl);
 
         ref.invalidate(authProvider);
       }

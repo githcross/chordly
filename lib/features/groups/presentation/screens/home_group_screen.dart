@@ -13,6 +13,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:chordly/features/songs/presentation/delegates/song_search_delegate.dart';
 import 'package:chordly/features/songs/presentation/screens/song_details_screen.dart';
 import 'package:chordly/features/songs/presentation/screens/deleted_songs_screen.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:chordly/features/groups/presentation/screens/add_video_screen.dart';
+import 'package:video_player/video_player.dart';
 
 class HomeGroupScreen extends ConsumerStatefulWidget {
   final GroupModel group;
@@ -345,95 +348,30 @@ class _HomeGroupScreenState extends ConsumerState<HomeGroupScreen> {
   }
 
   Widget _buildVideosTab() {
-    return Column(
-      children: [
-        Expanded(
-          child: StreamBuilder(
-            stream: FirebaseFirestore.instance
-                .collection('groups')
-                .doc(widget.group.id)
-                .collection('videos')
-                .orderBy('createdAt', descending: true)
-                .snapshots(),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) {
-                return const Center(child: CircularProgressIndicator());
-              }
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('groups')
+          .doc(widget.group.id)
+          .collection('videos')
+          .orderBy('createdAt', descending: true)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-              final videos = snapshot.data!.docs;
-              if (videos.isEmpty) {
-                return Center(
-                  child: Text(
-                    'No hay videos publicados',
-                    style: AppTextStyles.subtitle(context),
-                  ),
-                );
-              }
+        final videos = snapshot.data!.docs;
+        if (videos.isEmpty) {
+          return Center(
+            child: Text(
+              'No hay videos publicados',
+              style: AppTextStyles.subtitle(context),
+            ),
+          );
+        }
 
-              return GridView.builder(
-                padding: const EdgeInsets.all(8),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  childAspectRatio: 9 / 16,
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
-                ),
-                itemCount: videos.length,
-                itemBuilder: (context, index) {
-                  final video = videos[index].data();
-                  return Card(
-                    clipBehavior: Clip.antiAlias,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Image.network(
-                          video['thumbnailUrl'] ?? '',
-                          fit: BoxFit.cover,
-                        ),
-                        Positioned(
-                          bottom: 0,
-                          left: 0,
-                          right: 0,
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.bottomCenter,
-                                end: Alignment.topCenter,
-                                colors: [
-                                  Colors.black.withOpacity(0.8),
-                                  Colors.transparent,
-                                ],
-                              ),
-                            ),
-                            child: Text(
-                              video['title'] ?? 'Sin título',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ),
-                        Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: () {
-                              // TODO: Implementar visualización del video
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              );
-            },
-          ),
-        ),
-      ],
+        return _TikTokStyleVideoList(videos: videos);
+      },
     );
   }
 
@@ -449,7 +387,12 @@ class _HomeGroupScreenState extends ConsumerState<HomeGroupScreen> {
     if (_selectedIndex == 0 && widget.userRole == GroupRole.admin) {
       return FloatingActionButton(
         onPressed: () {
-          // TODO: Implementar subida de videos
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => AddVideoScreen(groupId: widget.group.id),
+            ),
+          );
         },
         child: const Icon(Icons.video_call),
       );
@@ -560,6 +503,205 @@ class _HorizontalCategoryCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _TikTokStyleVideoList extends StatefulWidget {
+  final List<QueryDocumentSnapshot> videos;
+
+  const _TikTokStyleVideoList({required this.videos});
+
+  @override
+  __TikTokStyleVideoListState createState() => __TikTokStyleVideoListState();
+}
+
+class __TikTokStyleVideoListState extends State<_TikTokStyleVideoList> {
+  late PageController _pageController;
+  late List<VideoPlayerController> _controllers = [];
+  int _currentPage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: 0);
+    _updateControllers();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TikTokStyleVideoList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.videos != widget.videos) {
+      _updateControllers();
+    }
+  }
+
+  void _updateControllers() {
+    // Dispose old controllers
+    for (var controller in _controllers) {
+      controller.dispose();
+    }
+
+    // Initialize new controllers
+    _controllers = widget.videos.map((videoDoc) {
+      final videoUrl = videoDoc['videoUrl'] as String?;
+      if (videoUrl == null || videoUrl.isEmpty) {
+        return VideoPlayerController.networkUrl(Uri.parse('invalid_url'))
+          ..setLooping(true);
+      }
+      return VideoPlayerController.networkUrl(Uri.parse(videoUrl))
+        ..setLooping(true)
+        ..initialize().then((_) {
+          if (mounted) setState(() {});
+        }).catchError((error) {
+          print('Error initializing video: $error');
+        });
+    }).toList();
+
+    // Reset page controller
+    _currentPage = 0;
+    if (_controllers.isNotEmpty) {
+      _controllers[0].initialize().then((_) {
+        if (mounted) {
+          setState(() {});
+          _controllers[0].play();
+        }
+      });
+    }
+  }
+
+  void _handlePageChanged(int page) {
+    if (page < 0 || page >= _controllers.length) return;
+
+    // Pause previous video if valid
+    if (_currentPage < _controllers.length) {
+      final previousController = _controllers[_currentPage];
+      if (previousController.value.isInitialized &&
+          previousController.value.isPlaying) {
+        previousController.pause();
+      }
+    }
+
+    // Play new video if valid
+    _currentPage = page;
+    final currentController = _controllers[page];
+    if (currentController.value.isInitialized &&
+        !currentController.value.isPlaying) {
+      currentController.play();
+    }
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    for (var controller in _controllers) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return widget.videos.isEmpty
+        ? Center(
+            child: Text(
+              'No hay videos disponibles',
+              style: AppTextStyles.subtitle(context),
+            ),
+          )
+        : PageView.builder(
+            controller: _pageController,
+            scrollDirection: Axis.vertical,
+            itemCount: widget.videos.length,
+            onPageChanged: _handlePageChanged,
+            itemBuilder: (context, index) {
+              if (index >= _controllers.length) return const SizedBox.shrink();
+
+              final videoData =
+                  widget.videos[index].data() as Map<String, dynamic>;
+              final controller = _controllers[index];
+
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (controller.value.isInitialized &&
+                      controller.value.isBuffering)
+                    const Center(child: CircularProgressIndicator())
+                  else if (controller.value.isInitialized)
+                    AspectRatio(
+                      aspectRatio: controller.value.aspectRatio,
+                      child: VideoPlayer(controller),
+                    )
+                  else
+                    const Center(child: CircularProgressIndicator()),
+                  _VideoOverlay(videoData: videoData),
+                ],
+              );
+            },
+          );
+  }
+}
+
+class _VideoOverlay extends StatelessWidget {
+  final Map<String, dynamic> videoData;
+
+  const _VideoOverlay({required this.videoData});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.black.withOpacity(0.6),
+            Colors.transparent,
+            Colors.transparent,
+            Colors.black.withOpacity(0.6),
+          ],
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Spacer(),
+          Text(
+            videoData['title'] ?? 'Sin título',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            videoData['description'] ?? '',
+            style: const TextStyle(color: Colors.white),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              const Icon(Icons.thumb_up, color: Colors.white, size: 16),
+              const SizedBox(width: 4),
+              Text(
+                '${videoData['likes'] ?? 0}',
+                style: const TextStyle(color: Colors.white),
+              ),
+              const SizedBox(width: 16),
+              const Icon(Icons.remove_red_eye, color: Colors.white, size: 16),
+              const SizedBox(width: 4),
+              Text(
+                '${videoData['views'] ?? 0}',
+                style: const TextStyle(color: Colors.white),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
