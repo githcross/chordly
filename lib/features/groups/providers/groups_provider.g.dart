@@ -23,7 +23,7 @@ final firestoreServiceProvider = AutoDisposeProvider<FirestoreService>.internal(
 @Deprecated('Will be removed in 3.0. Use Ref instead')
 // ignore: unused_element
 typedef FirestoreServiceRef = AutoDisposeProviderRef<FirestoreService>;
-String _$groupsHash() => r'f0f1d3ce3356360360c9c91f5f9eb1d60c7b7aa0';
+String _$groupsHash() => r'530d0cf3b5fcfe4268e49ed9b546cee818b7e64d';
 
 /// See also [Groups].
 @ProviderFor(Groups)

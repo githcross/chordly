@@ -16,6 +16,16 @@ import 'package:chordly/features/songs/presentation/screens/deleted_songs_screen
 import 'package:image_picker/image_picker.dart';
 import 'package:chordly/features/groups/presentation/screens/add_video_screen.dart';
 import 'package:video_player/video_player.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/rendering.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:flutter/services.dart';
+import 'dart:io';
+import 'dart:convert';
+import 'package:intl/intl.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:chordly/features/auth/providers/auth_provider.dart';
 
 class HomeGroupScreen extends ConsumerStatefulWidget {
   final GroupModel group;
@@ -154,16 +164,16 @@ class _HomeGroupScreenState extends ConsumerState<HomeGroupScreen> {
         selectedIndex: _selectedIndex,
         destinations: const [
           NavigationDestination(
-            icon: Icon(Icons.video_collection),
-            label: 'Videos',
-          ),
-          NavigationDestination(
             icon: Icon(Icons.music_note),
             label: 'Canciones',
           ),
           NavigationDestination(
             icon: Icon(Icons.queue_music),
             label: 'Playlists',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.video_collection),
+            label: 'Videos',
           ),
         ],
       ),
@@ -173,24 +183,7 @@ class _HomeGroupScreenState extends ConsumerState<HomeGroupScreen> {
 
   List<Widget> _buildActionsForCurrentTab() {
     switch (_selectedIndex) {
-      case 0: // Videos
-        return [
-          IconButton(
-            icon: const Icon(Icons.search),
-            tooltip: 'Buscar videos',
-            onPressed: () {
-              // TODO: Implementar búsqueda de videos
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.filter_list),
-            tooltip: 'Filtrar videos',
-            onPressed: () {
-              // TODO: Implementar filtro de videos
-            },
-          ),
-        ];
-      case 1: // Canciones
+      case 0: // Canciones
         final songsState = _songsKey.currentState;
         return [
           IconButton(
@@ -218,12 +211,19 @@ class _HomeGroupScreenState extends ConsumerState<HomeGroupScreen> {
           ),
           IconButton(
             icon: Badge(
-              isLabelVisible: songsState?.selectedTags.isNotEmpty ?? false,
-              label: Text((songsState?.selectedTags.length ?? 0).toString()),
-              child: const Icon(Icons.tag),
+              isLabelVisible: songsState?.currentFilteredCount != null &&
+                  songsState!.currentFilteredCount > 0,
+              label: Text('${songsState?.currentFilteredCount ?? 0}'),
+              child: const Icon(Icons.filter_alt),
             ),
-            tooltip: 'Filtrar por tags',
-            onPressed: _showTagFilter,
+            tooltip: 'Canciones filtradas',
+            onPressed: () {
+              if (_songsKey.currentState != null) {
+                _songsKey.currentState!.showTagFilter().then((_) {
+                  setState(() {});
+                });
+              }
+            },
           ),
           IconButton(
             icon: Icon(
@@ -254,14 +254,10 @@ class _HomeGroupScreenState extends ConsumerState<HomeGroupScreen> {
                   );
                   break;
                 case 'backup':
-                  if (songsState != null) {
-                    songsState.showBackupDialog();
-                  }
+                  _exportBackup();
                   break;
                 case 'restore':
-                  if (songsState != null) {
-                    songsState.showRestoreDialog();
-                  }
+                  _importBackup();
                   break;
               }
             },
@@ -309,23 +305,10 @@ class _HomeGroupScreenState extends ConsumerState<HomeGroupScreen> {
             ],
           ),
         ];
-      case 2: // Playlists
-        return [
-          IconButton(
-            icon: const Icon(Icons.search),
-            tooltip: 'Buscar playlists',
-            onPressed: () {
-              // TODO: Implementar búsqueda de playlists
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.sort),
-            tooltip: 'Ordenar',
-            onPressed: () {
-              // TODO: Implementar ordenamiento de playlists
-            },
-          ),
-        ];
+      case 1: // Playlists
+        return []; // No se necesitan acciones en la AppBar para Playlists
+      case 2: // Videos
+        return []; // No se necesitan acciones en la AppBar para Videos
       default:
         return [];
     }
@@ -334,14 +317,11 @@ class _HomeGroupScreenState extends ConsumerState<HomeGroupScreen> {
   Widget _buildBody() {
     switch (_selectedIndex) {
       case 0:
-        return _buildVideosTab();
+        return _buildSongsTab();
       case 1:
-        return ListSongsScreen(
-          key: _songsKey,
-          group: widget.group,
-        );
-      case 2:
         return _buildPlaylistsTab();
+      case 2:
+        return _buildVideosTab();
       default:
         return const SizedBox.shrink();
     }
@@ -376,7 +356,10 @@ class _HomeGroupScreenState extends ConsumerState<HomeGroupScreen> {
   }
 
   Widget _buildSongsTab() {
-    return ListSongsScreen(group: widget.group);
+    return ListSongsScreen(
+      key: _songsKey,
+      group: widget.group,
+    );
   }
 
   Widget _buildPlaylistsTab() {
@@ -384,35 +367,41 @@ class _HomeGroupScreenState extends ConsumerState<HomeGroupScreen> {
   }
 
   Widget? _buildFloatingActionButton() {
-    if (_selectedIndex == 0 && widget.userRole == GroupRole.admin) {
-      return FloatingActionButton(
-        onPressed: () {
-          Navigator.push(
+    switch (_selectedIndex) {
+      case 0: // Canciones
+        return FloatingActionButton(
+          onPressed: () => Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => AddVideoScreen(groupId: widget.group.id),
+              builder: (context) => AddSongScreen(groupId: widget.group.id),
             ),
-          );
-        },
-        child: const Icon(Icons.video_call),
-      );
-    } else if (_selectedIndex == 1) {
-      return FloatingActionButton(
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => AddSongScreen(groupId: widget.group.id),
           ),
-        ),
-        child: const Icon(Icons.add),
-      );
-    } else if (_selectedIndex == 2) {
-      return FloatingActionButton(
-        onPressed: () => _createPlaylist(context),
-        child: const Icon(Icons.playlist_add),
-      );
+          child: const Icon(Icons.add),
+        );
+      case 1: // Playlists
+        return FloatingActionButton(
+          onPressed: () => _createPlaylist(context),
+          child: const Icon(Icons.playlist_add),
+        );
+      case 2: // Videos
+        if (widget.userRole == GroupRole.admin) {
+          return FloatingActionButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) =>
+                      AddVideoScreen(groupId: widget.group.id),
+                ),
+              );
+            },
+            child: const Icon(Icons.video_call),
+          );
+        }
+        return null;
+      default:
+        return null;
     }
-    return null;
   }
 
   void _createPlaylist(BuildContext context) {
@@ -424,6 +413,137 @@ class _HomeGroupScreenState extends ConsumerState<HomeGroupScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _exportBackup() async {
+    try {
+      final user = ref.read(authProvider).value;
+      if (user == null) return;
+
+      final songsSnapshot = await FirebaseFirestore.instance
+          .collection('songs')
+          .where('groupId', isEqualTo: widget.group.id)
+          .where('isActive', isEqualTo: true)
+          .get();
+
+      final songs = songsSnapshot.docs.map((doc) {
+        final data = doc.data();
+        return data.map((key, value) {
+          if (value is Timestamp) {
+            return MapEntry(key, value.toDate().toIso8601String());
+          }
+          if (value is DocumentReference) {
+            return MapEntry(key, value.path);
+          }
+          if (value is GeoPoint) {
+            return MapEntry(
+                key, {'lat': value.latitude, 'lng': value.longitude});
+          }
+          return MapEntry(key, value);
+        });
+      }).toList();
+
+      final backup = {
+        'groupId': widget.group.id,
+        'groupName': widget.group.name,
+        'exportDate': DateTime.now().toIso8601String(),
+        'songs': songs,
+        'metadata': {
+          'appVersion': '2.0.0',
+          'deviceOS': Platform.operatingSystem,
+          'exportedBy': user.email ?? 'Usuario no identificado',
+        },
+      };
+
+      final jsonString = jsonEncode(backup);
+      final tempDir = await getTemporaryDirectory();
+      final fileName =
+          'chordly_backup_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.json';
+      final file = File('${tempDir.path}/$fileName');
+      await file.writeAsString(jsonString);
+
+      await Share.shareFiles(
+        [file.path],
+        text: 'Copia de seguridad de canciones - ${widget.group.name}',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al exportar: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _importBackup() async {
+    try {
+      // Seleccionar archivo
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      // Leer el archivo
+      final file = File(result.files.first.path!);
+      final jsonString = await file.readAsString();
+      final backup = jsonDecode(jsonString) as Map<String, dynamic>;
+
+      // Verificar que es un backup válido
+      if (!backup.containsKey('songs')) {
+        throw Exception('Archivo de backup inválido');
+      }
+
+      // Obtener el usuario actual
+      final user = ref.read(authProvider).value;
+      if (user == null) throw Exception('Usuario no autenticado');
+
+      // Importar cada canción
+      final batch = FirebaseFirestore.instance.batch();
+      final songs = backup['songs'] as List;
+
+      for (final song in songs) {
+        final songData = Map<String, dynamic>.from(song as Map);
+        songData['groupId'] = widget.group.id;
+        songData['createdBy'] = user.uid;
+        songData['createdAt'] = FieldValue.serverTimestamp();
+        songData['updatedAt'] = FieldValue.serverTimestamp();
+        songData['status'] = songData['status'] ?? 'borrador';
+        songData['isActive'] = songData['isActive'] ?? true;
+        songData['lyrics'] = songData['lyrics'] ?? '';
+        songData['lyricsTranspose'] =
+            songData['lyricsTranspose'] ?? songData['lyrics'];
+        songData['topFormat'] = songData['topFormat'] ?? '';
+        songData['baseKey'] = songData['baseKey'] ?? '';
+        songData['tempo'] = songData['tempo'] ?? 0;
+        songData['duration'] = songData['duration'] ?? '';
+        songData['videoReference'] = songData['videoReference'] ?? {};
+        songData['tags'] = songData['tags'] ?? [];
+        songData['collaborators'] = songData['collaborators'] ?? [];
+
+        // Remover el ID del documento original
+        songData.remove('id');
+
+        final newSongRef = FirebaseFirestore.instance.collection('songs').doc();
+        batch.set(newSongRef, songData);
+      }
+
+      await batch.commit();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              '${songs.length} canciones importadas con su estado original'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al importar: $e')),
+      );
+    }
   }
 }
 

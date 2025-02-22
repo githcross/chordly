@@ -9,6 +9,7 @@ import 'package:chordly/features/songs/presentation/widgets/lyrics_input_field.d
 import 'package:chordly/core/theme/text_styles.dart';
 import 'package:chordly/core/utils/snackbar_utils.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
+import 'package:chordly/features/songs/presentation/screens/edit_song_screen.dart';
 
 class AddSongScreen extends ConsumerStatefulWidget {
   final String groupId;
@@ -598,6 +599,18 @@ class _AddSongScreenState extends ConsumerState<AddSongScreen> {
                 ],
               ),
             ),
+    );
+  }
+
+  void _addSong(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EditSongScreen(
+          groupId: widget.groupId,
+          isEditing: false,
+        ),
+      ),
     );
   }
 }

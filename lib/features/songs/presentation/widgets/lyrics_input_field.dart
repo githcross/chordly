@@ -12,6 +12,9 @@ class LyricsInputField extends StatefulWidget {
   final TextStyle? style;
   final bool isFullScreen;
   final VoidCallback? onToggleFullScreen;
+  final Function(String)? onChordSelected;
+  final VoidCallback? onSectionInfoRequested;
+  final bool isPreview;
 
   const LyricsInputField({
     super.key,
@@ -23,6 +26,9 @@ class LyricsInputField extends StatefulWidget {
     this.style,
     this.isFullScreen = false,
     this.onToggleFullScreen,
+    this.onChordSelected,
+    this.onSectionInfoRequested,
+    this.isPreview = false,
   });
 
   @override
@@ -176,279 +182,175 @@ class _LyricsInputFieldState extends State<LyricsInputField> {
   }
 
   void _showChordDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        if (_isLoadingChords) {
-          return const AlertDialog(
-            title: Text('Cargando Acordes'),
-            content: Center(child: CircularProgressIndicator()),
-          );
-        }
+    if (widget.onChordSelected != null) {
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          if (_isLoadingChords) {
+            return const AlertDialog(
+              title: Text('Cargando Acordes'),
+              content: Center(child: CircularProgressIndicator()),
+            );
+          }
 
-        return AlertDialog(
-          title: const Text('Seleccionar Acorde'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (_noteCategories.isEmpty)
-                  const Text('No hay acordes disponibles')
-                else
-                  ..._noteCategories.entries.map((category) {
-                    return Card(
-                      margin: const EdgeInsets.symmetric(vertical: 8.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          ListTile(
-                            title: Text(
-                              category.key,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                  ),
+          return AlertDialog(
+            title: const Text('Seleccionar Acorde'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_noteCategories.isEmpty)
+                    const Text('No hay acordes disponibles')
+                  else
+                    ..._noteCategories.entries.map((category) {
+                      return Card(
+                        margin: const EdgeInsets.symmetric(vertical: 8.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            ListTile(
+                              title: Text(
+                                category.key,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                              ),
+                              subtitle: Text(
+                                _categoryDescriptions[category.key] ??
+                                    'Otros acordes',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
                             ),
-                            subtitle: Text(
-                              _categoryDescriptions[category.key] ??
-                                  'Otros acordes',
-                              style: Theme.of(context).textTheme.bodySmall,
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                              child: Wrap(
+                                spacing: 8.0,
+                                runSpacing: 8.0,
+                                children: category.value.map((note) {
+                                  return ActionChip(
+                                    label: Text(note),
+                                    labelStyle: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    backgroundColor: Theme.of(context)
+                                        .colorScheme
+                                        .primaryContainer,
+                                    onPressed: () {
+                                      Navigator.of(context).pop();
+                                      _insertChord(note);
+                                    },
+                                  );
+                                }).toList(),
+                              ),
                             ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                            child: Wrap(
-                              spacing: 8.0,
-                              runSpacing: 8.0,
-                              children: category.value.map((note) {
-                                return ActionChip(
-                                  label: Text(note),
-                                  labelStyle: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  backgroundColor: Theme.of(context)
-                                      .colorScheme
-                                      .primaryContainer,
-                                  onPressed: () {
-                                    Navigator.of(context).pop();
-                                    _insertChord(note);
-                                  },
-                                );
-                              }).toList(),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-              ],
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancelar'),
-            ),
-            if (_noteCategories.isNotEmpty)
+            actions: [
               TextButton(
-                onPressed: _loadChords,
-                child: const Text('Recargar'),
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancelar'),
               ),
-          ],
-        );
-      },
+              if (_noteCategories.isNotEmpty)
+                TextButton(
+                  onPressed: _loadChords,
+                  child: const Text('Recargar'),
+                ),
+            ],
+          );
+        },
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: widget.controller,
+      maxLines: widget.isFullScreen ? null : 10,
+      minLines: widget.isFullScreen ? 20 : 5,
+      decoration: InputDecoration(
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        hintText: 'Escribe la letra y acordes aquí...',
+        suffixIcon: widget.isFullScreen && widget.onChordSelected != null
+            ? IconButton(
+                icon: const Icon(Icons.music_note),
+                onPressed: () => _showChordDialog(context),
+              )
+            : null,
+      ),
+      onChanged: widget.onChanged,
     );
   }
 
-  void _showSymbolsInfo(BuildContext context) {
+  void _showBasicSymbolsHelp() {
     showDialog(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Row(
+      builder: (context) => AlertDialog(
+        title: const Text('Símbolos Esenciales'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.music_note,
-                  color: Theme.of(context).colorScheme.primary),
-              const SizedBox(width: 8),
-              const Text('Símbolos Musicales'),
+              _buildHelpItem('( )', 'Acordes', 'Ej: (C) = Do Mayor'),
+              _buildHelpItem(
+                  '/', 'Bajo en', 'Ej: Am/C = La menor con bajo en Do'),
             ],
           ),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildSymbolExplanation(
-                  context,
-                  '(_Coro_)',
-                  'Letra entre guion bajo',
-                  'Indican la estructura de la letra. Ejemplo: (_Coro_) = Estructura del coro',
-                ),
-                const Divider(),
-                _buildSymbolExplanation(
-                  context,
-                  '(Am)',
-                  'Acordes entre paréntesis',
-                  'Indican el acorde a tocar. Ejemplo: (Am) = La menor',
-                ),
-                const Divider(),
-                _buildSymbolExplanation(
-                  context,
-                  '[Suave]',
-                  'Comentarios entre corchetes',
-                  'Instrucciones o notas sobre la interpretación. No aparecen en el teleprompter.',
-                ),
-                const Divider(),
-                _buildSymbolExplanation(
-                  context,
-                  'C/G',
-                  'Barra diagonal entre acordes',
-                  'Indica un acorde con bajo específico. Ejemplo: C/G = Do con bajo en Sol',
-                ),
-                const Divider(),
-                _buildSymbolExplanation(
-                  context,
-                  'Re-La',
-                  'Guión entre acordes',
-                  'Indica una transición o conexión entre acordes',
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Consejo: Usa el botón de nota musical para insertar acordes fácilmente',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        fontStyle: FontStyle.italic,
-                        color: Theme.of(context).colorScheme.secondary,
-                      ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Entendido'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildSymbolExplanation(
-      BuildContext context, String symbol, String title, String description) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  symbol,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.onPrimaryContainer,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            description,
-            style: Theme.of(context).textTheme.bodyMedium,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Entendido'),
           ),
         ],
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              'Letra de la canción',
-              style: Theme.of(context).textTheme.titleMedium,
+  Widget _buildHelpItem(String symbol, String title, String description) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            symbol,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
             ),
-            IconButton(
-              icon: Icon(
-                Icons.info_outline,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              onPressed: () => _showSymbolsInfo(context),
-              tooltip: 'Símbolos musicales',
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
+                Text(
+                  description,
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
             ),
-            const Spacer(),
-            IconButton(
-              icon: Icon(
-                widget.isFullScreen ? Icons.fullscreen_exit : Icons.fullscreen,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              onPressed: widget.onToggleFullScreen,
-              tooltip: widget.isFullScreen
-                  ? 'Salir de pantalla completa'
-                  : 'Pantalla completa',
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        widget.isFullScreen
-            ? Expanded(
-                child: _buildTextFormField(),
-              )
-            : SizedBox(
-                height: 200, // Altura fija para modo normal
-                child: _buildTextFormField(),
-              ),
-      ],
-    );
-  }
-
-  Widget _buildTextFormField() {
-    return TextFormField(
-      controller: widget.controller,
-      style: widget.style,
-      maxLines: null,
-      keyboardType: TextInputType.multiline,
-      validator: widget.validator,
-      decoration: InputDecoration(
-        errorText: widget.errorText,
-        hintText: 'Escribe la letra con acordes...',
-        helperText:
-            'Formato: Selecciona nota para insertar o escribe la nota entre paréntesis',
-        helperMaxLines: 2,
-        border: const OutlineInputBorder(),
-        suffixIcon: IconButton(
-          icon: const Icon(Icons.music_note),
-          tooltip: 'Insertar acorde',
-          onPressed: () => _showChordDialog(context),
-        ),
+          ),
+        ],
       ),
-      onChanged: (value) {
-        widget.onChanged?.call(value);
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _restoreSelection();
-        });
-      },
     );
   }
 }

@@ -20,6 +20,7 @@ import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:convert';
+import 'package:chordly/features/songs/presentation/screens/edit_song_screen.dart';
 
 class ListSongsScreen extends ConsumerStatefulWidget {
   final GroupModel group;
@@ -42,6 +43,8 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
   final searchController = TextEditingController();
   bool isSelectionMode = false;
   Set<String> selectedSongs = {};
+  List<QueryDocumentSnapshot> _currentFilteredSongs = [];
+  int currentFilteredCount = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -55,30 +58,14 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
                 if (!snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }
-
-                final songs = snapshot.data!;
-                if (songs.isEmpty) {
-                  return Center(
-                    child: Text(
-                      'No hay canciones',
-                      style: AppTextStyles.subtitle(context),
-                    ),
-                  );
-                }
-
-                return _buildSongList(songs);
+                currentFilteredCount =
+                    selectedTags.isEmpty ? 0 : snapshot.data!.length;
+                return _buildSongList(snapshot.data!);
               },
             ),
           ),
         ],
       ),
-      floatingActionButton: isSelectionMode && selectedSongs.isNotEmpty
-          ? FloatingActionButton.extended(
-              onPressed: () => shareSongs(selectedSongs.toList()),
-              label: const Text('Exportar PDF'),
-              icon: const Icon(Icons.picture_as_pdf),
-            )
-          : null,
     );
   }
 
@@ -86,54 +73,29 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
     final user = ref.read(authProvider).value;
     if (user == null) return Stream.value([]);
 
-    // Query para canciones publicadas
-    final publishedQuery = FirebaseFirestore.instance
+    Query query = FirebaseFirestore.instance
         .collection('songs')
         .where('groupId', isEqualTo: widget.group.id)
-        .where('isActive', isEqualTo: true)
-        .where('status', isEqualTo: 'publicado')
-        .snapshots();
+        .where('isActive', isEqualTo: true);
 
-    // Query para borradores del usuario actual
-    final draftsQuery = FirebaseFirestore.instance
-        .collection('songs')
-        .where('groupId', isEqualTo: widget.group.id)
-        .where('isActive', isEqualTo: true)
-        .where('status', isEqualTo: 'borrador')
-        .where('createdBy', isEqualTo: user.uid)
-        .snapshots();
+    if (selectedTags.isNotEmpty) {
+      query = query.where('tags', arrayContainsAny: selectedTags);
+    }
 
-    // Combinar los streams y aplicar filtros y ordenamiento
-    return Rx.combineLatest2(
-      publishedQuery,
-      draftsQuery,
-      (QuerySnapshot published, QuerySnapshot drafts) {
-        final allDocs = [...published.docs, ...drafts.docs];
+    query = ascendingOrder
+        ? query.orderBy('title', descending: false)
+        : query.orderBy('title', descending: true);
 
-        // Filtrar por tags si hay seleccionados
-        var filteredDocs = allDocs;
-        if (selectedTags.isNotEmpty) {
-          filteredDocs = allDocs.where((doc) {
-            final data = doc.data() as Map<String, dynamic>;
-            final tags = List<String>.from(data['tags'] ?? []);
-            return selectedTags.every((tag) => tags.contains(tag));
-          }).toList();
-        }
+    return query.snapshots().map((snapshot) {
+      return snapshot.docs.where((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        final status = data['status'] as String?;
+        final userId = data['userId'] as String?;
 
-        // Ordenar por título
-        filteredDocs.sort((a, b) {
-          final aData = a.data() as Map<String, dynamic>;
-          final bData = b.data() as Map<String, dynamic>;
-          final aTitle = (aData['title'] as String).toLowerCase();
-          final bTitle = (bData['title'] as String).toLowerCase();
-          return ascendingOrder
-              ? aTitle.compareTo(bTitle)
-              : bTitle.compareTo(aTitle);
-        });
-
-        return filteredDocs;
-      },
-    );
+        return status == 'publicado' ||
+            (status == 'borrador' && userId == user.uid);
+      }).toList();
+    });
   }
 
   Future<void> shareSongs(List<String> songIds) async {
@@ -424,82 +386,78 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
     }
   }
 
-  Future<void> _showTagFilter() async {
+  Future<void> showTagFilter() async {
     final user = ref.read(authProvider).value;
     if (user == null) return;
 
-    // Obtener todas las canciones publicadas y borradores del usuario
-    final publishedSnapshot = await FirebaseFirestore.instance
-        .collection('songs')
-        .where('groupId', isEqualTo: widget.group.id)
-        .where('isActive', isEqualTo: true)
-        .where('status', isEqualTo: 'publicado')
+    final tagsSnapshot = await FirebaseFirestore.instance
+        .collection('tags')
+        .doc('default')
         .get();
 
-    final draftsSnapshot = await FirebaseFirestore.instance
-        .collection('songs')
-        .where('groupId', isEqualTo: widget.group.id)
-        .where('isActive', isEqualTo: true)
-        .where('status', isEqualTo: 'borrador')
-        .where('createdBy', isEqualTo: user.uid)
-        .get();
+    if (!tagsSnapshot.exists) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se encontraron tags')),
+        );
+      }
+      return;
+    }
 
-    // Combinar los documentos
-    final allDocs = [...publishedSnapshot.docs, ...draftsSnapshot.docs];
-
-    // Extraer todos los tags únicos
-    final allTags = allDocs.fold<Set<String>>(
-      {},
-      (tags, doc) {
-        final songTags = List<String>.from(doc.data()['tags'] ?? []);
-        return tags..addAll(songTags);
-      },
-    ).toList();
+    final allTags = List<String>.from(tagsSnapshot.data()?['tags'] ?? []);
 
     if (!mounted) return;
 
-    // Mostrar diálogo de selección de tags
     await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Filtrar por tags'),
-        content: SingleChildScrollView(
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: allTags.map((tag) {
-              return FilterChip(
-                label: Text(tag),
-                selected: selectedTags.contains(tag),
-                onSelected: (selected) {
-                  setState(() {
-                    if (selected) {
-                      selectedTags.add(tag);
-                    } else {
-                      selectedTags.remove(tag);
-                    }
-                  });
-                },
-              );
-            }).toList(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              setState(() {
-                selectedTags.clear();
-              });
-              Navigator.pop(context);
-            },
-            child: const Text('Limpiar'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cerrar'),
-          ),
-        ],
-      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Filtrar por tags'),
+              content: SingleChildScrollView(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: allTags.map((tag) {
+                    return FilterChip(
+                      label: Text(tag),
+                      selected: selectedTags.contains(tag),
+                      onSelected: (selected) {
+                        // Actualizar estado padre y UI del diálogo
+                        setState(() {
+                          if (selected) {
+                            selectedTags.add(tag);
+                          } else {
+                            selectedTags.remove(tag);
+                          }
+                        });
+                        setDialogState(() {}); // Forzar rebuild del diálogo
+                      },
+                    );
+                  }).toList(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      selectedTags.clear();
+                      currentFilteredCount = 0;
+                    });
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Limpiar'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cerrar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -644,7 +602,10 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => AddSongScreen(groupId: widget.group.id),
+        builder: (context) => EditSongScreen(
+          groupId: widget.group.id,
+          isEditing: false,
+        ),
       ),
     );
   }
@@ -693,12 +654,16 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
         return ListView.builder(
           itemCount: songs.length,
           itemBuilder: (context, index) {
-            final songData = songs[index].data() as Map<String, dynamic>;
-            final songId = songs[index].id;
-            final isDraft = songData['status'] == 'borrador';
+            final song = songs[index];
+            final data = song.data() as Map<String, dynamic>;
+            final title = data['title'] as String? ?? 'Sin título';
+            final author = data['author'] as String? ?? 'Autor desconocido';
+            final tempo = data['tempo']?.toString() ??
+                '0'; // Asegurar que el tempo sea un String
+            final isDraft = data['status'] == 'borrador';
 
             return Dismissible(
-              key: Key(songId),
+              key: Key(song.id),
               direction: canDelete
                   ? DismissDirection.endToStart
                   : DismissDirection.none,
@@ -709,16 +674,16 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
                 child: const Icon(Icons.delete, color: Colors.white),
               ),
               confirmDismiss: canDelete
-                  ? (direction) => _confirmDelete(context, songData, songId)
+                  ? (direction) => _confirmDelete(context, data, song.id)
                   : null,
               onDismissed: canDelete
                   ? (direction) async {
-                      lastDeletedSongId = songId;
-                      lastDeletedSongTitle = songData['title'];
+                      lastDeletedSongId = song.id;
+                      lastDeletedSongTitle = title;
 
                       await FirebaseFirestore.instance
                           .collection('songs')
-                          .doc(songId)
+                          .doc(song.id)
                           .update({'isActive': false});
 
                       if (mounted) {
@@ -732,13 +697,13 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
                 child: ListTile(
                   leading: isSelectionMode
                       ? Checkbox(
-                          value: selectedSongs.contains(songId),
+                          value: selectedSongs.contains(song.id),
                           onChanged: (bool? value) {
                             setState(() {
                               if (value == true) {
-                                selectedSongs.add(songId);
+                                selectedSongs.add(song.id);
                               } else {
-                                selectedSongs.remove(songId);
+                                selectedSongs.remove(song.id);
                               }
                             });
                           },
@@ -748,7 +713,7 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
                     children: [
                       Expanded(
                         child: Text(
-                          songData['title'],
+                          title,
                           style: Theme.of(context)
                               .textTheme
                               .titleMedium
@@ -786,7 +751,7 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
                     ],
                   ),
                   subtitle: Text(
-                    songData['author'] ?? '',
+                    '$author - $tempo BPM',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: Theme.of(context).colorScheme.secondary,
                         ),
@@ -794,10 +759,10 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
                   onTap: () {
                     if (isSelectionMode) {
                       setState(() {
-                        if (selectedSongs.contains(songId)) {
-                          selectedSongs.remove(songId);
+                        if (selectedSongs.contains(song.id)) {
+                          selectedSongs.remove(song.id);
                         } else {
-                          selectedSongs.add(songId);
+                          selectedSongs.add(song.id);
                         }
                       });
                     } else {
@@ -805,7 +770,7 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
                         context,
                         MaterialPageRoute(
                           builder: (context) => SongDetailsScreen(
-                            songId: songId,
+                            songId: song.id,
                             groupId: widget.group.id,
                           ),
                         ),
@@ -816,7 +781,7 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
                     setState(() {
                       if (!isSelectionMode) {
                         isSelectionMode = true;
-                        selectedSongs.add(songId);
+                        selectedSongs.add(song.id);
                       }
                     });
                   },
@@ -831,7 +796,9 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
 
   Future<void> _exportBackup() async {
     try {
-      // Obtener todas las canciones del grupo
+      final user = ref.read(authProvider).value;
+      if (user == null) return;
+
       final songsSnapshot = await FirebaseFirestore.instance
           .collection('songs')
           .where('groupId', isEqualTo: widget.group.id)
@@ -840,36 +807,50 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
 
       final songs = songsSnapshot.docs.map((doc) {
         final data = doc.data();
-        data['id'] = doc.id; // Incluir el ID del documento
-        return data;
+        return data.map((key, value) {
+          if (value is Timestamp) {
+            return MapEntry(key, value.toDate().toIso8601String());
+          }
+          if (value is DocumentReference) {
+            return MapEntry(key, value.path);
+          }
+          if (value is GeoPoint) {
+            return MapEntry(
+                key, {'lat': value.latitude, 'lng': value.longitude});
+          }
+          return MapEntry(key, value);
+        });
       }).toList();
 
-      // Crear el objeto de backup
       final backup = {
         'groupId': widget.group.id,
         'groupName': widget.group.name,
         'exportDate': DateTime.now().toIso8601String(),
         'songs': songs,
+        'metadata': {
+          'appVersion': '2.0.0',
+          'deviceOS': Platform.operatingSystem,
+          'exportedBy': user.email ?? 'Usuario no identificado',
+        },
       };
 
-      // Convertir a JSON
       final jsonString = jsonEncode(backup);
-
-      // Guardar el archivo
       final tempDir = await getTemporaryDirectory();
       final fileName =
-          'chordly_backup_${widget.group.name}_${DateFormat('yyyyMMdd').format(DateTime.now())}.json';
+          'chordly_backup_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.json';
       final file = File('${tempDir.path}/$fileName');
       await file.writeAsString(jsonString);
 
-      // Compartir el archivo
-      await Share.shareFiles([file.path],
-          text: 'Copia de seguridad de canciones');
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al exportar: $e')),
+      await Share.shareFiles(
+        [file.path],
+        text: 'Copia de seguridad de canciones - ${widget.group.name}',
       );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al exportar: $e')),
+        );
+      }
     }
   }
 
@@ -907,8 +888,18 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
         songData['createdBy'] = user.uid;
         songData['createdAt'] = FieldValue.serverTimestamp();
         songData['updatedAt'] = FieldValue.serverTimestamp();
-        songData['status'] = 'borrador';
-        songData['isActive'] = true;
+        songData['status'] = songData['status'] ?? 'borrador';
+        songData['isActive'] = songData['isActive'] ?? true;
+        songData['lyrics'] = songData['lyrics'] ?? '';
+        songData['lyricsTranspose'] =
+            songData['lyricsTranspose'] ?? songData['lyrics'];
+        songData['topFormat'] = songData['topFormat'] ?? '';
+        songData['baseKey'] = songData['baseKey'] ?? '';
+        songData['tempo'] = songData['tempo'] ?? 0;
+        songData['duration'] = songData['duration'] ?? '';
+        songData['videoReference'] = songData['videoReference'] ?? {};
+        songData['tags'] = songData['tags'] ?? [];
+        songData['collaborators'] = songData['collaborators'] ?? [];
 
         // Remover el ID del documento original
         songData.remove('id');
@@ -922,7 +913,8 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${songs.length} canciones importadas como borradores'),
+          content: Text(
+              '${songs.length} canciones importadas con su estado original'),
         ),
       );
     } catch (e) {
@@ -957,5 +949,22 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
           ),
         ) ??
         false;
+  }
+
+  Query<Object?> _songsQuery() {
+    Query query = FirebaseFirestore.instance
+        .collection('songs')
+        .where('groupId', isEqualTo: widget.group.id)
+        .where('isActive', isEqualTo: true);
+
+    if (selectedTags.isNotEmpty) {
+      query = query.where('tags', arrayContainsAny: selectedTags);
+    }
+
+    query = ascendingOrder
+        ? query.orderBy('title', descending: false)
+        : query.orderBy('title', descending: true);
+
+    return query;
   }
 }

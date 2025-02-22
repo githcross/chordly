@@ -10,15 +10,20 @@ import 'package:chordly/core/utils/snackbar_utils.dart';
 import 'package:chordly/features/songs/models/lyric_document.dart';
 import 'package:chordly/features/songs/presentation/screens/song_details_screen.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
+import 'package:chordly/features/songs/presentation/widgets/song_parser.dart';
+import 'package:chordly/features/songs/providers/song_sections_provider.dart';
+import 'package:chordly/features/songs/presentation/widgets/song_section.dart';
 
 class EditSongScreen extends ConsumerStatefulWidget {
-  final String songId;
+  final String? songId;
   final String groupId;
+  final bool isEditing;
 
   const EditSongScreen({
     Key? key,
-    required this.songId,
+    this.songId,
     required this.groupId,
+    required this.isEditing,
   }) : super(key: key);
 
   @override
@@ -45,6 +50,9 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
   late Future<DocumentSnapshot> _songFuture;
   late Map<String, dynamic> _songData;
   bool _isLyricsFullScreen = false;
+  bool _isInitialized = false;
+  late String _originalLyrics;
+  late String _transposedLyrics;
 
   @override
   void initState() {
@@ -54,6 +62,10 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
         .doc(widget.songId)
         .get()
         .then((snapshot) {
+      if (!snapshot.exists) {
+        throw Exception('Documento de canción no encontrado');
+      }
+
       _songData = snapshot.data() as Map<String, dynamic>;
 
       // Asegurarnos de usar siempre la letra original, nunca la transpuesta
@@ -69,8 +81,8 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
         _titleController = TextEditingController(text: _songData['title']);
         _authorController = TextEditingController(text: _songData['author']);
         _lyricsController = TextEditingController(text: originalLyrics);
-        _tempoController =
-            TextEditingController(text: (_songData['tempo'] ?? 0).toString());
+        _tempoController = TextEditingController(
+            text: (_songData['tempo'] ?? _songData['bpm'] ?? 0).toString());
         _durationController =
             TextEditingController(text: _songData['duration'] ?? '');
         _videoUrlController =
@@ -93,6 +105,18 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
     });
 
     _loadData();
+
+    if (!_isInitialized) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            _originalLyrics = _songData['lyrics'] ?? '';
+            _transposedLyrics = _songData['lyricsTranspose'] ?? _originalLyrics;
+            _isInitialized = true;
+          });
+        }
+      });
+    }
   }
 
   Future<void> _loadData() async {
@@ -120,7 +144,12 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
   }
 
   Future<void> _updateSong() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Corrige los errores antes de guardar')),
+      );
+      return;
+    }
 
     setState(() => _isLoading = true);
 
@@ -128,41 +157,28 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
       final currentUser = ref.read(authProvider).value;
       if (currentUser == null) throw Exception('Usuario no autenticado');
 
-      // Verificar si el usuario actual no es el creador original
-      final isOriginalCreator = _songData['creatorUserId'] == currentUser.uid;
+      // Validar BPM
+      final tempo = int.tryParse(_tempoController.text) ?? 0;
+      if (tempo < 20 || tempo > 300) {
+        throw Exception('El BPM debe estar entre 20 y 300');
+      }
 
       final newLyrics = _lyricsController.text;
+
       // Convertir a formato top usando LyricDocument
       final lyricDoc = LyricDocument.fromInlineText(newLyrics);
       final topFormat = lyricDoc.toTopFormat();
-
-      // Obtener el estado actual de la canción
-      final currentSong = await FirebaseFirestore.instance
-          .collection('songs')
-          .doc(widget.songId)
-          .get();
-      final currentData = currentSong.data() as Map<String, dynamic>;
-      final currentLyrics = currentData['lyrics'] as String?;
-      final currentTransposed = currentData['lyricsTranspose'] as String?;
-
-      // Determinar si hay una transposición activa
-      final hasActiveTransposition =
-          currentTransposed != null && currentTransposed != currentLyrics;
 
       // Preparar datos de actualización
       final updatedSongData = {
         'title': _titleController.text.trim(),
         'author': _authorController.text.trim(),
         'lyrics': newLyrics,
-        // Si hay una transposición activa, actualizar lyricsTranspose proporcionalmente
-        'lyricsTranspose': hasActiveTransposition
-            ? _updateTransposedLyrics(
-                currentLyrics ?? '', currentTransposed ?? '', newLyrics)
-            : newLyrics,
+        'lyricsTranspose': newLyrics,
         'topFormat': topFormat,
         'baseKey': _selectedKey,
         'tags': _selectedTags,
-        'tempo': int.tryParse(_tempoController.text) ?? 0,
+        'tempo': tempo,
         'duration': _durationController.text.trim(),
         'status': _status,
         'updatedAt': FieldValue.serverTimestamp(),
@@ -177,75 +193,62 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
           'notes': _videoNotesController.text.trim(),
         };
       } else {
-        // Si no hay URL, eliminar la referencia de video si existía
         updatedSongData['videoReference'] = FieldValue.delete();
       }
 
+      // Asegurar que la duración sea válida
+      final duration = _durationController.text.trim();
+      if (duration.isNotEmpty && _validateDuration(duration) == null) {
+        updatedSongData['duration'] = duration;
+      } else {
+        updatedSongData['duration'] = FieldValue.delete();
+      }
+
       // Agregar colaboradores si no es el creador original
+      final isOriginalCreator = _songData['creatorUserId'] == currentUser.uid;
       if (!isOriginalCreator) {
         updatedSongData['collaborators'] =
             FieldValue.arrayUnion([currentUser.uid]);
       }
 
+      // Actualizar Firestore
       await FirebaseFirestore.instance
           .collection('songs')
           .doc(widget.songId)
           .update(updatedSongData);
 
-      if (!mounted) return;
-      Navigator.pop(
-          context, true); // Retornar true para indicar que hubo cambios
-
-      SnackBarUtils.showSnackBar(
-        context,
-        message: 'Canción actualizada correctamente',
-      );
-    } catch (e) {
-      setState(() {
-        _error = e.toString();
-        _isLoading = false;
-      });
-      SnackBarUtils.showSnackBar(
-        context,
-        message: 'Error al actualizar: $e',
-        isError: true,
-      );
-    }
-  }
-
-  // Método para actualizar la letra transpuesta manteniendo la transposición relativa
-  String _updateTransposedLyrics(
-      String oldLyrics, String oldTransposed, String newLyrics) {
-    try {
-      // Si las letras son iguales, no hay cambios que hacer
-      if (oldLyrics == newLyrics) return oldTransposed;
-
-      // Obtener los acordes y su transposición actual
-      final oldChordRegex = RegExp(r'\(([^)]+)\)');
-      final oldMatches = oldChordRegex.allMatches(oldLyrics);
-      final transposedMatches = oldChordRegex.allMatches(oldTransposed);
-
-      // Crear un mapa de transposiciones
-      final transpositionMap = <String, String>{};
-      for (var i = 0; i < oldMatches.length; i++) {
-        final oldChord = oldMatches.elementAt(i).group(1)!;
-        final transposedChord = transposedMatches.elementAt(i).group(1)!;
-        transpositionMap[oldChord] = transposedChord;
+      if (mounted) {
+        Navigator.pop(context, true);
+        SnackBarUtils.showSnackBar(context, message: 'Canción guardada');
       }
-
-      // Aplicar la misma transposición a los acordes en la nueva letra
-      String result = newLyrics;
-      final newMatches = oldChordRegex.allMatches(newLyrics);
-      for (var match in newMatches) {
-        final chord = match.group(1)!;
-        final transposed = transpositionMap[chord] ?? chord;
-        result = result.replaceFirst('($chord)', '($transposed)');
+    } on FormatException catch (e) {
+      if (mounted) {
+        SnackBarUtils.showSnackBar(
+          context,
+          message: 'Error en el formato del BPM: ${e.message}',
+          isError: true,
+        );
       }
-
-      return result;
+    } on FirebaseException catch (e) {
+      if (mounted) {
+        SnackBarUtils.showSnackBar(
+          context,
+          message: 'Error de Firebase: ${e.message}',
+          isError: true,
+        );
+      }
     } catch (e) {
-      print('Error al actualizar transposición: $e');
-      return newLyrics; // En caso de error, retornar la letra sin transponer
+      if (mounted) {
+        SnackBarUtils.showSnackBar(
+          context,
+          message: 'Error inesperado: ${e.toString()}',
+          isError: true,
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -264,6 +267,16 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
     if (seconds >= 60) {
       return 'Los segundos deben ser menores a 60';
     }
+
+    return null;
+  }
+
+  String? _validateTempo(String? value) {
+    if (value == null || value.isEmpty) return null;
+
+    final tempo = int.tryParse(value);
+    if (tempo == null) return 'Debe ser un número';
+    if (tempo < 20 || tempo > 300) return 'El BPM debe estar entre 20 y 300';
 
     return null;
   }
@@ -318,330 +331,843 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
     );
   }
 
-  Widget _buildLyricsEditor() {
-    if (_isLyricsFullScreen) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Editar Letra'),
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => setState(() => _isLyricsFullScreen = false),
+  Widget _buildLyricsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildLyricsHeader(),
+        _buildLyricsInputField(),
+      ],
+    );
+  }
+
+  Widget _buildLyricsHeader() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            'Letra y Acordes',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  color: Theme.of(context).colorScheme.primary,
+                ),
           ),
-        ),
-        body: Padding(
-          padding: const EdgeInsets.all(5.0),
-          child: SizedBox(
-            height: MediaQuery.of(context).size.height,
-            child: LyricsInputField(
-              songId: widget.songId,
-              controller: _lyricsController,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    fontSize: 14.0,
-                  ),
-              isFullScreen: true,
-              onToggleFullScreen: () =>
-                  setState(() => _isLyricsFullScreen = false),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Por favor, ingresa la letra de la canción';
-                }
-                return null;
-              },
+          IconButton(
+            icon: const Icon(Icons.expand),
+            onPressed: () => _openFullScreenEditor(),
+            tooltip: 'Editar en pantalla completa',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLyricsInputField() {
+    return Container(
+      height: 250,
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: InkWell(
+        onTap: _openFullScreenEditor,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            _lyricsController.text.isEmpty
+                ? 'Toca para comenzar a editar la letra...'
+                : _lyricsController.text,
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey.shade800,
             ),
           ),
         ),
-      );
-    }
+      ),
+    );
+  }
 
-    return LyricsInputField(
-      songId: widget.songId,
-      controller: _lyricsController,
-      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            fontSize: 14.0,
+  void _openFullScreenEditor() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.9,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            _buildFullScreenHeader(),
+            Expanded(
+              child: LyricsInputField(
+                controller: _lyricsController,
+                isFullScreen: true,
+                onChordSelected: _insertChord,
+              ),
+            ),
+            _buildEditorTools(),
+          ],
+        ),
+      ),
+    ).then((_) {
+      // Forzar la actualización del estado cuando se cierra el editor
+      if (mounted) {
+        setState(() {});
+      }
+    });
+  }
+
+  Widget _buildFullScreenHeader() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            'Editor Completo',
+            style: Theme.of(context).textTheme.headlineSmall,
           ),
-      isFullScreen: false,
-      onToggleFullScreen: () => setState(() => _isLyricsFullScreen = true),
-      validator: (value) {
-        if (value == null || value.isEmpty) {
-          return 'Por favor, ingresa la letra de la canción';
-        }
-        return null;
-      },
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFullScreenEditor() {
+    return Card(
+      elevation: 2,
+      child: LyricsInputField(
+        controller: _lyricsController,
+        onChordSelected: _insertChord,
+        isFullScreen: true,
+      ),
+    );
+  }
+
+  Widget _buildEditorTools() {
+    final basicSections = [
+      {'name': 'Intro', 'emoji': '🎵', 'color': Colors.blue},
+      {'name': 'Verse', 'emoji': '📝', 'color': Colors.green},
+      {'name': 'Pre-Chorus', 'emoji': '🚀', 'color': Colors.purple},
+      {'name': 'Chorus', 'emoji': '🎶', 'color': Colors.orange},
+      {'name': 'Bridge', 'emoji': '🌉', 'color': Colors.purple},
+      {'name': 'Outro', 'emoji': '🎸', 'color': Colors.brown},
+    ];
+
+    final advancedSections = [
+      {'name': 'Refrain', 'emoji': '🔄', 'color': Colors.indigo},
+      {'name': 'Vamp', 'emoji': '🔁', 'color': Colors.deepPurple},
+      {'name': 'Interlude', 'emoji': '🎤', 'color': Colors.pink},
+      {'name': 'Breakdown', 'emoji': '⬇️', 'color': Colors.teal},
+      {'name': 'Build-Up', 'emoji': '🔺', 'color': Colors.red},
+      {'name': 'Post-Chorus', 'emoji': '🎵', 'color': Colors.amber},
+      {'name': 'Fade-Out', 'emoji': '🔚', 'color': Colors.grey},
+    ];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          ...basicSections.map((section) => _buildToolButton(
+                section['name'] as String,
+                section['emoji'] as String,
+                section['color'] as Color,
+              )),
+          PopupMenuButton(
+            icon: const Icon(Icons.expand_more),
+            itemBuilder: (context) => advancedSections
+                .map((section) => PopupMenuItem(
+                      child: ListTile(
+                        leading: Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: section['color'] as Color,
+                            shape: BoxShape.circle,
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            section['emoji'] as String,
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ),
+                        title: Text(section['name'] as String),
+                      ),
+                      onTap: () => _insertSectionTag(section['name'] as String),
+                    ))
+                .toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildToolButton(String section, String emoji, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color.withOpacity(0.1),
+          foregroundColor: color,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+        ),
+        icon: Text(emoji),
+        label: Text(section),
+        onPressed: () => _insertSectionTag(section),
+      ),
+    );
+  }
+
+  void _insertSectionTag(String section) {
+    final text = '\n[$section]\n';
+    final cursorPos = _lyricsController.selection.base.offset;
+    _lyricsController.text = _lyricsController.text.replaceRange(
+      cursorPos,
+      cursorPos,
+      text,
+    );
+    _lyricsController.selection = TextSelection.collapsed(
+      offset: cursorPos + text.length,
+    );
+  }
+
+  void _insertChord(String chord) {
+    final cursorPos = _lyricsController.selection.base.offset;
+    final newText = _lyricsController.text.replaceRange(
+      cursorPos,
+      cursorPos,
+      '($chord)',
+    );
+    _lyricsController.text = newText;
+    _lyricsController.selection = TextSelection.fromPosition(
+      TextPosition(offset: cursorPos + chord.length + 2),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    if (_error != null) {
-      return Scaffold(
-        body: Center(
-          child: Text('Error: $_error'),
-        ),
-      );
-    }
-
-    if (_isLyricsFullScreen) {
-      return _buildLyricsEditor();
-    }
-
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          'Editar Canción',
-          style: AppTextStyles.appBarTitle(context),
-        ),
+        title: Text(widget.isEditing ? 'Editar Canción' : 'Nueva Canción'),
         actions: [
           IconButton(
-            onPressed: _updateSong,
-            icon: const Icon(Icons.save_outlined),
-            tooltip: 'Guardar',
+            icon: const Icon(Icons.save),
+            onPressed: _saveSong,
+            tooltip: 'Guardar cambios',
           ),
-          const SizedBox(width: 8),
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(5),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextFormField(
-                controller: _titleController,
-                style: AppTextStyles.inputText(context),
-                decoration: InputDecoration(
-                  labelText: 'Título *',
-                  labelStyle: AppTextStyles.metadata(context),
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'El título es obligatorio';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _authorController,
-                style: AppTextStyles.inputText(context),
-                decoration: InputDecoration(
-                  labelText: 'Autor *',
-                  labelStyle: AppTextStyles.metadata(context),
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'El autor es obligatorio';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: _selectedKey,
-                style: AppTextStyles.inputText(context),
-                decoration: InputDecoration(
-                  labelText: 'Tono *',
-                  labelStyle: AppTextStyles.metadata(context),
-                  border: OutlineInputBorder(),
-                ),
-                items: _availableNotes
-                    .map((note) => DropdownMenuItem(
-                          value: note,
-                          child: Text(note,
-                              style: AppTextStyles.itemTitle(context)),
-                        ))
-                    .toList(),
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() => _selectedKey = value);
-                  }
-                },
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'El tono es obligatorio';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _tempoController,
-                      style: AppTextStyles.inputText(context),
-                      decoration: InputDecoration(
-                        labelText: 'BPM',
-                        labelStyle: AppTextStyles.metadata(context),
-                        border: OutlineInputBorder(),
-                        hintText: '120',
-                      ),
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _durationController,
-                      style: AppTextStyles.inputText(context),
-                      decoration: InputDecoration(
-                        labelText: 'Duración (mm:ss)',
-                        labelStyle: AppTextStyles.metadata(context),
-                        border: OutlineInputBorder(),
-                        hintText: '3:45',
-                      ),
-                      validator: _validateDuration,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'[0-9:]')),
-                        LengthLimitingTextInputFormatter(5),
-                        TextInputFormatter.withFunction((oldValue, newValue) {
-                          final text = newValue.text;
-                          if (text.isEmpty) return newValue;
-                          if (text.contains(':')) {
-                            if (text.length > 5) return oldValue;
-                            return newValue;
-                          }
-                          if (text.length == 2) {
-                            return TextEditingValue(
-                              text: '$text:',
-                              selection: TextSelection.collapsed(
-                                  offset: text.length + 1),
-                            );
-                          }
-                          if (text.length > 2 && !text.contains(':')) {
-                            return oldValue;
-                          }
-                          return newValue;
-                        }),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Text('Tags', style: AppTextStyles.sectionTitle(context)),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _availableTags
-                    .map((tag) => FilterChip(
-                          label:
-                              Text(tag, style: AppTextStyles.metadata(context)),
-                          selected: _selectedTags.contains(tag),
-                          onSelected: (selected) {
-                            setState(() {
-                              if (selected) {
-                                _selectedTags.add(tag);
-                              } else {
-                                _selectedTags.remove(tag);
-                              }
-                            });
-                          },
-                        ))
-                    .toList(),
-              ),
-              const SizedBox(height: 20),
-              _buildLyricsEditor(),
-              const SizedBox(height: 16),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 16),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Sección de Metadatos Básicos
+            Card(
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Text(
-                      'Estado',
-                      style: Theme.of(context).textTheme.titleMedium,
+                      'Información Básica',
+                      style: AppTextStyles.sectionTitle(context),
                     ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FutureBuilder<DocumentSnapshot>(
-                        future: FirebaseFirestore.instance
-                            .collection('songs')
-                            .doc(widget.songId)
-                            .get(),
-                        builder: (context, snapshot) {
-                          if (!snapshot.hasData) {
-                            return const CircularProgressIndicator();
-                          }
-
-                          final songData =
-                              snapshot.data!.data() as Map<String, dynamic>;
-                          final currentStatus = songData['status'] as String;
-                          final isPublished = currentStatus == 'publicado';
-
-                          return SegmentedButton<String>(
-                            segments: [
-                              ButtonSegment<String>(
-                                value: 'borrador',
-                                label: const Text('Borrador'),
-                                enabled: !isPublished,
+                    const SizedBox(height: 16),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        return Wrap(
+                          spacing: 16,
+                          runSpacing: 16,
+                          children: [
+                            SizedBox(
+                              width: constraints.maxWidth > 600
+                                  ? 300
+                                  : double.infinity,
+                              child: TextFormField(
+                                controller: _titleController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Título',
+                                  prefixIcon: Icon(Icons.title),
+                                ),
                               ),
-                              const ButtonSegment<String>(
-                                value: 'publicado',
-                                label: Text('Publicado'),
+                            ),
+                            SizedBox(
+                              width: constraints.maxWidth > 600
+                                  ? 300
+                                  : double.infinity,
+                              child: TextFormField(
+                                controller: _authorController,
+                                decoration: const InputDecoration(
+                                  labelText: 'Artista/Grupo',
+                                  prefixIcon: Icon(Icons.person),
+                                ),
                               ),
-                            ],
-                            selected: {_status},
-                            onSelectionChanged: (Set<String> newSelection) {
-                              setState(() {
-                                _status = newSelection.first;
-                              });
-                            },
-                          );
-                        },
-                      ),
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
-              Text(
-                'Video de referencia',
-                style: AppTextStyles.sectionTitle(context),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _videoUrlController,
-                decoration: const InputDecoration(
-                  labelText: 'URL del video',
-                  hintText: 'Ingresa la URL del video de YouTube',
-                  prefixIcon: Icon(Icons.video_library),
+            ),
+
+            const SizedBox(height: 24),
+
+            // Sección de Configuración Musical
+            Card(
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '⚙️ Configuración Musical',
+                      style: AppTextStyles.sectionTitle(context),
+                    ),
+                    const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 16,
+                      children: [
+                        SizedBox(
+                          width: 120,
+                          child: TextFormField(
+                            controller: _tempoController,
+                            decoration: const InputDecoration(
+                              labelText: 'BPM',
+                              prefixIcon: Icon(Icons.speed),
+                            ),
+                            keyboardType: TextInputType.number,
+                            validator: _validateTempo,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-                validator: (value) {
-                  if (value != null && value.isNotEmpty) {
-                    final videoId = YoutubePlayer.convertUrlToId(value);
-                    if (videoId == null) {
-                      return 'URL de YouTube inválida';
-                    }
-                  }
-                  return null;
-                },
               ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _videoNotesController,
-                decoration: const InputDecoration(
-                  labelText: 'Notas sobre el video',
-                  hintText: 'Agrega notas sobre la versión del video',
-                  prefixIcon: Icon(Icons.note),
+            ),
+
+            const SizedBox(height: 24),
+
+            // Sección de Referencia de Video
+            Card(
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '🎥 Referencia de Video',
+                      style: AppTextStyles.sectionTitle(context),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _videoUrlController,
+                      decoration: const InputDecoration(
+                        labelText: 'URL del Video',
+                        prefixIcon: Icon(Icons.link),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _videoNotesController,
+                      decoration: const InputDecoration(
+                        labelText: 'Notas sobre el video',
+                        hintText: 'Agrega notas sobre la versión del video',
+                        prefixIcon: Icon(Icons.note),
+                      ),
+                      maxLines: 2,
+                    ),
+                  ],
                 ),
-                maxLines: 2,
               ),
+            ),
+
+            const SizedBox(height: 24),
+
+            // Sección de Tags
+            Card(
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text('🏷️ Tags',
+                            style: AppTextStyles.sectionTitle(context)),
+                        const SizedBox(width: 10),
+                        IconButton(
+                          icon: const Icon(Icons.add_circle, size: 24),
+                          onPressed: _showAddTagDialog,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    _buildTagChips(),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            // Editor de Letra
+            Card(
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          '🎼 Letra y Acordes',
+                          style: AppTextStyles.sectionTitle(context),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.help_outline),
+                          onPressed: () => _showSectionGuide(context),
+                          tooltip: 'Guía de secciones',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    _buildLyricsSection(),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            _buildDurationField(),
+            _buildStatusSwitch(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDurationField() {
+    return TextFormField(
+      controller: _durationController,
+      decoration: const InputDecoration(
+        labelText: 'Duración (mm:ss)',
+        prefixIcon: Icon(Icons.timer),
+      ),
+      keyboardType: TextInputType.datetime,
+      inputFormatters: [
+        FilteringTextInputFormatter.digitsOnly,
+        LengthLimitingTextInputFormatter(4),
+        _TimeInputFormatter(),
+      ],
+    );
+  }
+
+  Widget _buildStatusSwitch() {
+    return SwitchListTile(
+      title: Text(_status == 'publicado' ? 'Publicado' : 'Borrador'),
+      subtitle: const Text('Estado de la canción'),
+      value: _status == 'publicado',
+      onChanged: (value) {
+        setState(() => _status = value ? 'publicado' : 'borrador');
+      },
+      secondary: Icon(
+        _status == 'publicado' ? Icons.public : Icons.drafts,
+        color: Theme.of(context).colorScheme.primary,
+      ),
+    );
+  }
+
+  void _showSectionQuickMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: FutureBuilder<QuerySnapshot>(
+          future: FirebaseFirestore.instance.collection('song_sections').get(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            final sections = snapshot.data!.docs;
+
+            return GridView.builder(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                childAspectRatio: 2.5,
+              ),
+              itemCount: sections.length,
+              itemBuilder: (context, index) {
+                final data = sections[index].data() as Map<String, dynamic>;
+                return _buildSectionButtonFromFirestore(data);
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionButtonFromFirestore(Map<String, dynamic> data) {
+    return Tooltip(
+      message: data['description'],
+      child: ElevatedButton.icon(
+        icon: Text(data['emoji']),
+        label: Text(data['name']),
+        onPressed: () => _addSection(data['name']),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: _parseColor(data['defaultColor']),
+          foregroundColor: Colors.white,
+        ),
+      ),
+    );
+  }
+
+  void _showSectionGuide(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Guía de Secciones Musicales'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: FutureBuilder<QuerySnapshot>(
+            future:
+                FirebaseFirestore.instance.collection('song_sections').get(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) return const CircularProgressIndicator();
+
+              return SingleChildScrollView(
+                child: DataTable(
+                  columnSpacing: 20,
+                  columns: const [
+                    DataColumn(label: Text('Sección')),
+                    DataColumn(label: Text('Descripción')),
+                  ],
+                  rows: snapshot.data!.docs.map((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    return DataRow(cells: [
+                      DataCell(
+                        Row(
+                          children: [
+                            Text(data['emoji']),
+                            const SizedBox(width: 8),
+                            Text(data['name']),
+                          ],
+                        ),
+                      ),
+                      DataCell(Text(data['description'])),
+                    ]);
+                  }).toList(),
+                ),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _addSection(String sectionName) {
+    final cursorPos = _lyricsController.selection.base.offset;
+    final newText = _lyricsController.text.replaceRange(
+      cursorPos,
+      cursorPos,
+      '\n[$sectionName]\n',
+    );
+    _lyricsController.text = newText;
+  }
+
+  Widget _buildSectionPreview(List<SongSection> sections) {
+    return Column(
+      children: sections
+          .map<Widget>((section) => ListTile(
+                leading: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: section.color,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                title: Text(section.type),
+                subtitle: Text(
+                  section.content.length > 50
+                      ? '${section.content.substring(0, 50)}...'
+                      : section.content,
+                ),
+              ))
+          .toList(),
+    );
+  }
+
+  Widget _buildSectionButtons() {
+    return FutureBuilder<QuerySnapshot>(
+      future: FirebaseFirestore.instance
+          .collection('song_sections')
+          .orderBy('order')
+          .get(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const CircularProgressIndicator();
+
+        final sections = snapshot.data!.docs;
+
+        return Column(
+          children: [
+            _buildSectionGroup(
+                sections.where((d) => !(d['isAdvanced'] ?? false))),
+            const SizedBox(height: 16),
+            ExpansionTile(
+              title: const Text('Bloques Avanzados'),
+              children: [
+                _buildSectionGroup(
+                    sections.where((d) => d['isAdvanced'] ?? false)),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildSectionGroup(Iterable<QueryDocumentSnapshot> sections) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: sections.map((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        return Tooltip(
+          message: data['description'],
+          child: ElevatedButton.icon(
+            icon: Text(data['emoji']),
+            label: Text(data['name']),
+            onPressed: () => _addSection(data['name']),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _parseColor(data['defaultColor']),
+              foregroundColor: Colors.white,
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Color _parseColor(String hex) =>
+      Color(int.parse(hex.replaceAll('#', '0xFF')));
+
+  Widget _buildTagChip(String tag) {
+    final isSelected = _selectedTags.contains(tag);
+    return InputChip(
+      label: Text(tag),
+      selected: isSelected,
+      onSelected: (selected) => setState(
+          () => selected ? _selectedTags.add(tag) : _selectedTags.remove(tag)),
+      selectedColor: Theme.of(context).colorScheme.primary.withOpacity(0.15),
+      checkmarkColor: Theme.of(context).colorScheme.primary,
+    );
+  }
+
+  Widget _buildTagChips() {
+    return FutureBuilder<DocumentSnapshot>(
+      future:
+          FirebaseFirestore.instance.collection('tags').doc('default').get(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const CircularProgressIndicator();
+
+        final tags = List<String>.from(snapshot.data!['tags'] ?? []);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: 8,
+              children: tags.map((tag) => _buildTagChip(tag)).toList(),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showAddTagDialog() {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Nuevo Tag'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            labelText: 'Nombre del tag',
+            hintText: 'Ej: Rock, Balada, Navidad',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (controller.text.isNotEmpty) {
+                _addNewTag(controller.text);
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('Agregar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _addNewTag(String tag) async {
+    final tagsRef =
+        FirebaseFirestore.instance.collection('tags').doc('default');
+    await tagsRef.update({
+      'tags': FieldValue.arrayUnion([tag])
+    });
+    setState(() {});
+  }
+
+  void _saveSong() async {
+    try {
+      final newLyrics = _lyricsController.text;
+
+      // Convertir a formato top usando LyricDocument
+      final lyricDoc = LyricDocument.fromInlineText(newLyrics);
+      final topFormat = lyricDoc.toTopFormat();
+
+      final songData = {
+        'title': _titleController.text,
+        'author': _authorController.text,
+        'lyrics': newLyrics,
+        'lyricsTranspose': newLyrics,
+        'topFormat': topFormat,
+        'key': _selectedKey,
+        'tempo': _tempoController.text,
+        'videoUrl': _videoUrlController.text,
+        'startTime': _videoNotesController.text,
+        'tags': _selectedTags,
+        'lastUpdated': FieldValue.serverTimestamp(),
+      };
+
+      if (widget.isEditing && widget.songId != null) {
+        await FirebaseFirestore.instance
+            .collection('songs')
+            .doc(widget.songId)
+            .update(songData);
+      } else {
+        songData['groupId'] = widget.groupId;
+        songData['createdAt'] = FieldValue.serverTimestamp();
+        await FirebaseFirestore.instance.collection('songs').add(songData);
+      }
+
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Canción guardada exitosamente')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al guardar: $e')),
+        );
+      }
+    }
+  }
+
+  void _showChordDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Seleccionar Acorde'),
+        content: SizedBox(
+          width: 300,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              _buildChordCategory('Mayores', Colors.blue),
+              _buildChordCategory('Menores', Colors.green),
+              _buildChordCategory('Séptima', Colors.orange),
+              _buildChordCategory('Suspendidas', Colors.purple),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildChordCategory(String title, Color color) {
+    return ExpansionTile(
+      title: Text(title),
+      children: [
+        GridView.count(
+          crossAxisCount: 3,
+          shrinkWrap: true,
+          children: ['C', 'D', 'E', 'F', 'G', 'A', 'B']
+              .map((note) => _buildChordButton(note, color))
+              .toList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildChordButton(String chord, Color color) {
+    return Padding(
+      padding: const EdgeInsets.all(4),
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color.withOpacity(0.1),
+          foregroundColor: color,
+        ),
+        onPressed: () {
+          _insertChord(chord);
+          Navigator.pop(context);
+        },
+        child: Text(chord),
+      ),
+    );
+  }
+}
+
+class _TimeInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final text = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (text.length > 4) return oldValue;
+
+    String formatted = text;
+    if (text.length > 2) {
+      formatted = '${text.substring(0, 2)}:${text.substring(2)}';
+    }
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
     );
   }
 }

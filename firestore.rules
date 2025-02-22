@@ -1,0 +1,15 @@
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /groups/{groupId}/videos/{videoId} {
+      allow read: if true;
+      allow create: if request.auth != null 
+        && request.resource.data.keys().hasAll(['videoUrl', 'publicId']);
+      allow update: if request.auth.uid == resource.data.userId;
+      allow delete: if false;
+    }
+    match /groups/{groupId}/songs/{songId} {
+      allow read: if request.auth != null 
+        && resource.data.groupId == groupId;
+    }
+  }
+} 

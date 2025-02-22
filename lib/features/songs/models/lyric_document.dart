@@ -16,6 +16,8 @@ class LyricDocument {
   }
 
   String toTopFormat() {
+    // Lógica para convertir la letra a formato top
+    // Aquí deberías implementar la conversión real
     return lines.map((line) => line.toTopFormat()).join('\n');
   }
 }
