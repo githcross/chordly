@@ -44,32 +44,32 @@ class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   bool shouldRebuild(_SliverAppBarDelegate oldDelegate) {
-    return maxHeight != oldDelegate.maxHeight ||
-        minHeight != oldDelegate.minHeight ||
-        child != oldDelegate.child;
+    return true;
   }
 }
 
 class SongDetailsScreen extends ConsumerStatefulWidget {
-  final String? songId;
-  final String? groupId;
+  final String songId;
+  final String groupId;
   final List<String>? playlistSongs;
-  final int? currentIndex;
+  final int currentIndex;
+  final bool fromPlaylist;
 
   const SongDetailsScreen({
-    Key? key,
+    super.key,
     required this.songId,
     required this.groupId,
     this.playlistSongs,
-    this.currentIndex,
-  }) : super(key: key);
+    this.currentIndex = 0,
+    this.fromPlaylist = false,
+  });
 
   @override
   ConsumerState<SongDetailsScreen> createState() => _SongDetailsScreenState();
 }
 
 class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
-  Stream<DocumentSnapshot> _songStream = const Stream.empty();
+  late final Stream<DocumentSnapshot> _songStream;
   String? _resolvedGroupId;
   String _originalLyrics = '';
   String _transposedLyrics = '';
@@ -85,62 +85,64 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
   final ScrollController _autoScrollController = ScrollController();
   bool _isAutoScrolling = false;
   double _scrollSpeed = 50.0; // Pixeles por segundo
-  final AudioPlayer _audioPlayer = AudioPlayer();
-  final AudioPlayer _metronome = AudioPlayer();
+  late final AudioPlayer _metronomePlayer;
   Timer? _metronomeTimer;
-  bool _isPlayingMetronome = false;
-  int? _soundId;
-  int? _lastBeatTime;
-  int _currentBpm = 0;
+  int _firestoreBpm = 0;
+  int? _localBpm;
   YoutubePlayerController? _videoController;
   bool _isVideoVisible = false;
   double _videoOffsetX = 0;
   double _videoOffsetY = 0;
   late Map<String, dynamic> _songData;
+  bool _wasMetronomePlaying = false;
+  bool _isMetronomeActive = false;
 
   // Agregar getter para isLandscape
   bool get isLandscape =>
       MediaQuery.of(context).orientation == Orientation.landscape;
 
+  // 1. Agregar variable _currentBpm como getter calculado
+  int get effectiveBpm => _localBpm ?? _firestoreBpm;
+
+  // 1. Restaurar getter de transposición
+  bool get hasActiveTransposition => _transposedLyrics != _originalLyrics;
+
   @override
   void initState() {
     super.initState();
-    _isInitialized = false;
-    _currentIndex = widget.currentIndex ?? 0;
+    _currentIndex = widget.currentIndex;
     _pageController = PageController(initialPage: _currentIndex);
 
-    // Configurar el stream inmediatamente
+    // Configurar stream principal
+    _initializeSongStream();
+
+    _metronomePlayer = AudioPlayer();
+    _initializeMetronome();
+  }
+
+  // 2. Método separado para inicializar el stream
+  void _initializeSongStream() {
     _songStream = FirebaseFirestore.instance
         .collection('songs')
         .doc(widget.songId)
         .snapshots();
 
-    _initMetronome();
-
-    // Inicializar las letras y el tempo cuando se carga el documento
-    _songStream.listen((snapshot) {
-      if (mounted) {
+    _songStream.listen((DocumentSnapshot snapshot) {
+      if (mounted && snapshot.exists) {
+        final data = snapshot.data()! as Map<String, dynamic>;
         setState(() {
-          _songData = snapshot.data() as Map<String, dynamic>;
-          _originalLyrics = _songData['lyrics'] ?? '';
-          _transposedLyrics = _songData['lyricsTranspose'] ?? _originalLyrics;
-          _currentBpm =
-              _songData['tempo']?.toInt() ?? _songData['bpm']?.toInt() ?? 0;
+          _songData = data;
+          _firestoreBpm = (data['tempo'] as num?)?.toInt() ?? 0;
+          _originalLyrics = data['lyrics']?.toString() ?? '';
+          _transposedLyrics =
+              data['lyricsTranspose']?.toString() ?? _originalLyrics;
           _isInitialized = true;
+          if (!_isMetronomeActive) {
+            _localBpm = null;
+          }
         });
       }
     });
-  }
-
-  Future<void> _initMetronome() async {
-    try {
-      await _metronome.setSource(AssetSource('audio/click.wav'));
-      await _metronome.setVolume(1.0);
-      await _metronome.setReleaseMode(ReleaseMode.stop);
-      print('Metrónomo inicializado');
-    } catch (e) {
-      print('Error al inicializar el metrónomo: $e');
-    }
   }
 
   @override
@@ -148,10 +150,10 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     _transformationController.dispose();
     _pageController.dispose();
     _autoScrollController.dispose();
-    _audioPlayer.dispose();
+    _metronomePlayer.dispose();
     _metronomeTimer?.cancel();
-    _metronome.dispose();
     _videoController?.dispose();
+    _localBpm = null;
     super.dispose();
   }
 
@@ -412,103 +414,133 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     }
 
     // Si hay playlist, envolver en PageView para permitir deslizar
-    return PageView.builder(
-      controller: _pageController,
-      itemCount: widget.playlistSongs!.length,
-      onPageChanged: (index) {
-        setState(() {
-          _currentIndex = index;
-          _isInitialized = false;
-          // Resetear el estado de la canción
-          _originalLyrics = '';
-          _transposedLyrics = '';
-          _isPlayingMetronome = false;
-          _metronomeTimer?.cancel();
-          _isVideoVisible = false;
-          _videoController?.dispose();
-          _videoController = null;
-          _videoOffsetX = 0;
-          _videoOffsetY = 0;
-          _scale = 1.0;
-          _fontSize = 16.0;
-          _landscapeFontSize = 16.0;
-        });
-
-        // Actualizar el stream con la nueva canción
-        _songStream = FirebaseFirestore.instance
-            .collection('songs')
-            .doc(widget.playlistSongs![index])
-            .snapshots();
+    return WillPopScope(
+      onWillPop: () async {
+        Navigator.pop(context, true);
+        return true;
       },
-      itemBuilder: (context, index) {
-        // Asegurarnos de que estamos usando el ID correcto de la canción
-        final currentSongId = widget.playlistSongs![index];
+      child: Stack(
+        children: [
+          PageView.builder(
+            controller: _pageController,
+            physics: widget.fromPlaylist
+                ? const NeverScrollableScrollPhysics()
+                : const PageScrollPhysics(),
+            itemCount: widget.playlistSongs!.length,
+            onPageChanged: _handlePageChange,
+            itemBuilder: (context, index) {
+              // Asegurarnos de que estamos usando el ID correcto de la canción
+              final currentSongId = widget.playlistSongs![index];
 
-        return StreamBuilder<DocumentSnapshot>(
-          // Usar un stream específico para cada canción
-          stream: FirebaseFirestore.instance
-              .collection('songs')
-              .doc(currentSongId)
-              .snapshots(),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
-            }
+              return StreamBuilder<DocumentSnapshot>(
+                // Usar un stream específico para cada canción
+                stream: FirebaseFirestore.instance
+                    .collection('songs')
+                    .doc(currentSongId)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
 
-            if (!snapshot.data!.exists) {
-              return _buildErrorScreen('La canción no existe o fue eliminada');
-            }
+                  if (!snapshot.data!.exists) {
+                    return _buildErrorScreen(
+                        'La canción no existe o fue eliminada');
+                  }
 
-            final songData = snapshot.data!.data() as Map<String, dynamic>;
+                  final songData =
+                      snapshot.data!.data() as Map<String, dynamic>;
 
-            // Inicializar las letras cuando se carga el documento
-            if (!_isInitialized) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) {
-                  setState(() {
-                    _originalLyrics = songData['lyrics'] ?? '';
-                    _transposedLyrics =
-                        songData['lyricsTranspose'] ?? _originalLyrics;
-                    _currentBpm = songData['tempo']?.toInt() ??
-                        songData['bpm']?.toInt() ??
-                        0;
-                    _isInitialized = true;
-                  });
-                }
-              });
-            }
+                  // Inicializar las letras cuando se carga el documento
+                  if (!_isInitialized) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) {
+                        setState(() {
+                          _originalLyrics = songData['lyrics'] ?? '';
+                          _transposedLyrics =
+                              songData['lyricsTranspose'] ?? _originalLyrics;
+                          _firestoreBpm = songData['tempo']?.toInt() ??
+                              songData['bpm']?.toInt() ??
+                              0;
+                          _isInitialized = true;
+                          if (!_isMetronomeActive) {
+                            _localBpm = null;
+                          }
+                        });
+                      }
+                    });
+                  }
 
-            return StreamBuilder<GroupRole>(
-              stream: _getUserRole(),
-              builder: (context, roleSnapshot) {
-                final userRole = roleSnapshot.data ?? GroupRole.member;
-                final canEdit =
-                    userRole == GroupRole.admin || userRole == GroupRole.editor;
+                  return StreamBuilder<GroupRole>(
+                    stream: _getUserRole(),
+                    builder: (context, roleSnapshot) {
+                      final userRole = roleSnapshot.data ?? GroupRole.member;
+                      final canEdit = userRole == GroupRole.admin ||
+                          userRole == GroupRole.editor;
 
-                return Scaffold(
-                  backgroundColor: isLandscape ? Colors.black : null,
-                  appBar: isLandscape
-                      ? null
-                      : _buildAppBar(context, songData, canEdit),
-                  body: Stack(
-                    children: [
-                      _buildSongContent(songData),
-                      if (isLandscape)
-                        Positioned(
-                          left: 0,
-                          right: 0,
-                          bottom: 0,
-                          child: _buildLandscapeControls(),
+                      return Scaffold(
+                        backgroundColor: isLandscape ? Colors.black : null,
+                        appBar: isLandscape
+                            ? null
+                            : _buildAppBar(context, songData, canEdit),
+                        body: Stack(
+                          children: [
+                            _buildSongContent(songData),
+                            if (isLandscape)
+                              Positioned(
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                child: _buildLandscapeControls(),
+                              ),
+                            _buildVideoPlayer(),
+                            if (widget.playlistSongs != null &&
+                                widget.playlistSongs!.length > 1)
+                              Positioned(
+                                left: 16,
+                                bottom:
+                                    MediaQuery.of(context).padding.bottom + 16,
+                                child: _NavigationButton(
+                                  icon: Icons.chevron_left,
+                                  onPressed: _currentIndex > 0
+                                      ? () => _pageController.previousPage(
+                                            duration: const Duration(
+                                                milliseconds: 300),
+                                            curve: Curves.easeInOut,
+                                          )
+                                      : null,
+                                ),
+                              ),
+                            if (widget.playlistSongs != null &&
+                                widget.playlistSongs!.length > 1)
+                              Positioned(
+                                right: 16,
+                                bottom:
+                                    MediaQuery.of(context).padding.bottom + 16,
+                                child: _NavigationButton(
+                                  icon: Icons.chevron_right,
+                                  onPressed: _currentIndex <
+                                          widget.playlistSongs!.length - 1
+                                      ? () => _pageController.nextPage(
+                                            duration: const Duration(
+                                                milliseconds: 300),
+                                            curve: Curves.easeInOut,
+                                          )
+                                      : null,
+                                ),
+                              ),
+                          ],
                         ),
-                      _buildVideoPlayer(),
-                    ],
-                  ),
-                );
-              },
-            );
-          },
-        );
-      },
+                      );
+                    },
+                  );
+                },
+              );
+            },
+          ),
+          _buildVideoPlayer(),
+        ],
+      ),
     );
   }
 
@@ -525,7 +557,7 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
         children: [
           Expanded(
             child: Text(
-              songData['title'] ?? 'Sin título',
+              songData['title'] ?? 'Detalles de canción',
               style: Theme.of(context).textTheme.bodyLarge,
               overflow: TextOverflow.ellipsis,
             ),
@@ -552,6 +584,36 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
         ],
       ),
       actions: [
+        if (widget.fromPlaylist && widget.playlistSongs != null)
+          IconButton(
+            icon: Icon(
+              Icons.chevron_left,
+              color: _currentIndex > 0
+                  ? Colors.white
+                  : Colors.white.withOpacity(0.3),
+            ),
+            onPressed: _currentIndex > 0
+                ? () => _pageController.previousPage(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                    )
+                : null,
+          ),
+        if (widget.fromPlaylist && widget.playlistSongs != null)
+          IconButton(
+            icon: Icon(
+              Icons.chevron_right,
+              color: _currentIndex < widget.playlistSongs!.length - 1
+                  ? Colors.white
+                  : Colors.white.withOpacity(0.3),
+            ),
+            onPressed: _currentIndex < widget.playlistSongs!.length - 1
+                ? () => _pageController.nextPage(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                    )
+                : null,
+          ),
         _buildSettingsMenu(context, songData, canEdit),
       ],
     );
@@ -654,11 +716,15 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
 
   Stream<List<DocumentSnapshot>> _getSongsStream() {
     return Stream.fromFuture(
-      Future.wait(
-        widget.playlistSongs!.map(
-          (id) => FirebaseFirestore.instance.collection('songs').doc(id).get(),
-        ),
-      ).catchError((e) {
+      Future.wait(widget.playlistSongs!
+              .map(
+                (id) => FirebaseFirestore.instance
+                    .collection('songs')
+                    .doc(id)
+                    .get(),
+              )
+              .cast<Future<DocumentSnapshot>>())
+          .catchError((e) {
         if (mounted) {
           SnackBarUtils.showSnackBar(
             context,
@@ -696,9 +762,12 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
               setState(() {
                 _originalLyrics = newLyrics;
                 _transposedLyrics = newTransposedLyrics;
-                _currentBpm =
+                _firestoreBpm =
                     songData['tempo']?.toInt() ?? songData['bpm']?.toInt() ?? 0;
                 _isInitialized = true;
+                if (!_isMetronomeActive) {
+                  _localBpm = null;
+                }
               });
             }
           });
@@ -1018,7 +1087,7 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: _isPlayingMetronome
+            color: _metronomeTimer != null
                 ? Theme.of(context).colorScheme.primary
                 : Theme.of(context).colorScheme.primaryContainer,
             borderRadius: BorderRadius.circular(16),
@@ -1027,9 +1096,9 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                _isPlayingMetronome ? Icons.pause : Icons.play_arrow,
+                _metronomeTimer != null ? Icons.pause : Icons.play_arrow,
                 size: 20,
-                color: _isPlayingMetronome
+                color: _metronomeTimer != null
                     ? Theme.of(context).colorScheme.onPrimary
                     : Theme.of(context).colorScheme.primary,
               ),
@@ -1037,23 +1106,12 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
               Text(
                 '$bpm BPM',
                 style: TextStyle(
-                  color: _isPlayingMetronome
+                  color: _metronomeTimer != null
                       ? Theme.of(context).colorScheme.onPrimary
                       : Theme.of(context).colorScheme.primary,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              if (_isPlayingMetronome) ...[
-                const SizedBox(width: 8),
-                InkWell(
-                  onTap: _stopMetronome,
-                  child: Icon(
-                    Icons.close,
-                    size: 20,
-                    color: Theme.of(context).colorScheme.onPrimary,
-                  ),
-                ),
-              ],
             ],
           ),
         ),
@@ -1062,47 +1120,112 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
   }
 
   void _toggleMetronome() {
-    if (_isPlayingMetronome) {
+    if (_metronomeTimer != null) {
       _stopMetronome();
     } else {
-      _startMetronome(_currentBpm);
+      _startMetronome();
     }
   }
 
-  void _startMetronome(int bpm) {
-    try {
-      _currentBpm = bpm;
-      _metronomeTimer?.cancel();
+  void _startMetronome() {
+    final interval = (60000 / effectiveBpm).round();
 
-      final interval = (60000 / bpm).round();
-      print('Iniciando metrónomo a $bpm BPM (intervalo: $interval ms)');
+    _metronomeTimer?.cancel();
+    _metronomePlayer.stop();
 
-      _metronome.stop();
-      _metronome.resume();
+    var nextBeat = DateTime.now().microsecondsSinceEpoch;
+    const soundDuration = 50;
+    const systemLatency = 20; // Latencia del sistema en ms
 
-      setState(() => _isPlayingMetronome = true);
+    _metronomeTimer = Timer.periodic(
+      Duration(milliseconds: interval),
+      (timer) async {
+        final now = DateTime.now().microsecondsSinceEpoch;
+        if (now >= nextBeat) {
+          final adjustedInterval =
+              (interval - soundDuration - systemLatency) * 1000;
+          nextBeat = now + adjustedInterval;
 
-      _metronomeTimer = Timer.periodic(Duration(milliseconds: interval), (_) {
-        if (_isPlayingMetronome) {
-          _metronome.stop();
-          _metronome.resume();
+          await _metronomePlayer.seek(Duration.zero);
+          await _metronomePlayer.play(AssetSource('audio/click.wav'));
         }
-      });
-    } catch (e) {
-      print('Error: $e');
-      _stopMetronome();
-    }
+      },
+    );
+
+    setState(() => _isMetronomeActive = true);
   }
 
   void _stopMetronome() {
     _metronomeTimer?.cancel();
-    _metronome.stop();
-    setState(() {
-      _isPlayingMetronome = false;
-      _currentBpm = _songData['tempo']?.toInt() ??
-          _songData['bpm']?.toInt() ??
-          0; // Restaurar el tempo original
+    _metronomePlayer.stop();
+    setState(() => _isMetronomeActive = false);
+  }
+
+  void _adjustBpm(int delta) {
+    final newBpm = (_localBpm ?? _firestoreBpm) + delta;
+    _localBpm = newBpm.clamp(40, 240);
+
+    setState(() {}); // 1. Actualización local del estado
+
+    if (_isMetronomeActive) {
+      _metronomeTimer?.cancel();
+      _startMetronome(); // 2. Reinicio completo del metrónomo
+    }
+
+    // 3. Actualización visual forzada en el BottomSheet
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
     });
+  }
+
+  Widget _buildBpmControls() {
+    return StatefulBuilder(
+      // 4. StatefulBuilder para actualización local
+      builder: (context, setLocalState) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.remove_circle_outline),
+              iconSize: 36,
+              color: Theme.of(context).colorScheme.primary,
+              onPressed: () {
+                _adjustBpm(-5);
+                setLocalState(() {}); // 5. Actualización del StatefulBuilder
+              },
+            ),
+            GestureDetector(
+              onTap: () => _showBpmDialog(context, effectiveBpm),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '$effectiveBpm BPM',
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.add_circle_outline),
+              iconSize: 36,
+              color: Theme.of(context).colorScheme.primary,
+              onPressed: () {
+                _adjustBpm(5);
+                setLocalState(() {}); // 5. Actualización del StatefulBuilder
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildTagsRow(BuildContext context, List<dynamic> tags) {
@@ -1140,24 +1263,31 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     return DateFormat('dd/MM/yyyy HH:mm').format(dateTime);
   }
 
-  void _navigateToEdit(BuildContext context) {
+  void _navigateToEditScreen() {
+    Navigator.pop(context);
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => EditSongScreen(
           songId: widget.songId,
-          groupId: widget.groupId!,
+          groupId: widget.groupId,
           isEditing: true,
         ),
       ),
-    ).then((shouldRefresh) {
-      if (shouldRefresh == true && mounted) {
-        // Forzar actualización del stream
-        setState(() {
-          _isInitialized = false;
-        });
-      }
-    });
+    );
+  }
+
+  void _navigateToTeleprompter() {
+    Navigator.pop(context); // Cerrar menú settings
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TeleprompterScreen(
+          lyrics: _transposedLyrics,
+          title: _songData['title'],
+        ),
+      ),
+    );
   }
 
   Future<String> _getCreatorName(String userId) async {
@@ -1289,75 +1419,9 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     return Stack(
       children: [
         Container(
-          padding: const EdgeInsets.only(bottom: 60), // Espacio para la barra
+          padding: const EdgeInsets.only(bottom: 60),
           child: CustomScrollView(
             slivers: [
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: _SliverAppBarDelegate(
-                  minHeight: 48,
-                  maxHeight: 48,
-                  child: Container(
-                    color:
-                        Theme.of(context).colorScheme.surface.withOpacity(0.95),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.remove),
-                            onPressed: () => _adjustBpm(-5),
-                            tooltip: 'Disminuir BPM',
-                            iconSize: 20,
-                          ),
-                          Text(
-                            '$_currentBpm BPM',
-                            style: Theme.of(context).textTheme.labelMedium,
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.add),
-                            onPressed: () => _adjustBpm(5),
-                            tooltip: 'Aumentar BPM',
-                            iconSize: 20,
-                          ),
-                          IconButton(
-                            icon: Icon(_isPlayingMetronome
-                                ? Icons.stop
-                                : Icons.play_arrow),
-                            onPressed: _toggleMetronome,
-                            tooltip:
-                                _isPlayingMetronome ? 'Detener' : 'Iniciar',
-                            iconSize: 20,
-                          ),
-                          const VerticalDivider(thickness: 1, width: 12),
-                          IconButton(
-                            icon: const Icon(Icons.arrow_downward),
-                            onPressed: () => _transposeChords(false),
-                            tooltip: 'Bajar medio tono',
-                            iconSize: 20,
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.arrow_upward),
-                            onPressed: () => _transposeChords(true),
-                            tooltip: 'Subir medio tono',
-                            iconSize: 20,
-                          ),
-                          const VerticalDivider(thickness: 1, width: 12),
-                          IconButton(
-                            icon: const Icon(Icons.refresh),
-                            onPressed: _restoreOriginalChords,
-                            tooltip: 'Restaurar original',
-                            iconSize: 20,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
               SliverToBoxAdapter(
                 child:
                     _buildSongStructure(parsedSections, songData, sectionKeys),
@@ -1467,13 +1531,7 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
                 },
               ),
               const VerticalDivider(color: Colors.white30),
-              IconButton(
-                icon: Icon(
-                  _isPlayingMetronome ? Icons.stop : Icons.play_arrow,
-                  color: Colors.white,
-                ),
-                onPressed: _toggleMetronome,
-              ),
+              _buildBpmControls(),
               const VerticalDivider(color: Colors.white30),
               IconButton(
                 icon: const Icon(Icons.refresh, color: Colors.white),
@@ -1587,7 +1645,6 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
                     handleColor: Theme.of(context).colorScheme.primary,
                   ),
                 ),
-                RemainingDuration(),
               ],
             ),
           ),
@@ -1730,78 +1787,51 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     return PopupMenuButton<String>(
       icon: const Icon(Icons.settings),
       itemBuilder: (context) => [
-        PopupMenuItem(
-          value: 'video',
-          child: Row(
-            children: [
-              Icon(
+        if (hasVideo)
+          PopupMenuItem(
+            value: 'video',
+            child: ListTile(
+              leading: Icon(
                 _isVideoVisible ? Icons.videocam_off : Icons.videocam,
                 color: Theme.of(context).colorScheme.primary,
               ),
-              const SizedBox(width: 12),
-              const Text('Video Referencia'),
-              const Spacer(),
-              Checkbox(
+              title: const Text('Video Referencia'),
+              trailing: Switch(
                 value: _isVideoVisible,
                 onChanged: (value) {
                   Navigator.pop(context);
-                  if (value != null) {
-                    if (value && hasVideo) {
-                      _initializeVideoPlayer(videoReference['url']);
-                    } else {
-                      setState(() => _isVideoVisible = false);
-                    }
+                  if (value) {
+                    _initializeVideoPlayer(videoReference['url']);
+                  } else {
+                    setState(() => _isVideoVisible = false);
                   }
                 },
               ),
-            ],
+            ),
           ),
-        ),
         const PopupMenuDivider(),
         PopupMenuItem(
-          value: 'transpose',
-          child: PopupMenuButton<String>(
-            child: const ListTile(
-              leading: Icon(Icons.music_note),
-              title: Text('Transposición'),
-              trailing: Icon(Icons.arrow_right),
-            ),
-            onSelected: (value) {
-              switch (value) {
-                case 'up':
-                  _transposeChords(true);
-                  break;
-                case 'down':
-                  _transposeChords(false);
-                  break;
-                case 'reset':
-                  _restoreOriginalChords();
-                  break;
-              }
+          value: 'metronome',
+          child: ListTile(
+            leading: const Icon(Icons.speed),
+            title: const Text('Metrónomo'),
+            trailing: const Icon(Icons.arrow_right),
+            onTap: () {
+              Navigator.pop(context);
+              _showMetronomeSettings(context);
             },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'up',
-                child: ListTile(
-                  leading: Icon(Icons.arrow_upward),
-                  title: Text('Subir medio tono'),
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'down',
-                child: ListTile(
-                  leading: Icon(Icons.arrow_downward),
-                  title: Text('Bajar medio tono'),
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'reset',
-                child: ListTile(
-                  leading: Icon(Icons.refresh),
-                  title: Text('Restaurar original'),
-                ),
-              ),
-            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'transpose',
+          child: ListTile(
+            leading: const Icon(Icons.music_note),
+            title: const Text('Transposición'),
+            trailing: const Icon(Icons.arrow_right),
+            onTap: () {
+              Navigator.pop(context);
+              _showTranspositionMenu(context);
+            },
           ),
         ),
         if (canEdit)
@@ -1810,7 +1840,7 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
             child: ListTile(
               leading: const Icon(Icons.edit),
               title: const Text('Editar canción'),
-              onTap: () => _navigateToEdit(context),
+              onTap: () => _navigateToEditScreen(),
             ),
           ),
         PopupMenuItem(
@@ -1818,100 +1848,167 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
           child: ListTile(
             leading: const Icon(Icons.slideshow),
             title: const Text('Modo presentación'),
-            onTap: () => _showTeleprompterMode(context, songData),
+            onTap: () => _navigateToTeleprompter(),
           ),
         ),
       ],
     );
   }
 
-  void _adjustBpm(int delta) {
-    final newBpm = (_currentBpm + delta).clamp(40, 240);
-    setState(() => _currentBpm = newBpm);
-    if (_isPlayingMetronome) {
-      _startMetronome(newBpm);
-    }
-  }
-
-  Widget _buildChordText(String text) {
-    final chordRegex = RegExp(r'\(([^)]+)\)');
-    final matches = chordRegex.allMatches(text);
-    int lastEnd = 0;
-    final spans = <TextSpan>[];
-
-    for (final match in matches) {
-      // Texto antes del acorde
-      if (match.start > lastEnd) {
-        spans.add(TextSpan(
-          text: text.substring(lastEnd, match.start),
-          style: TextStyle(
-            color: Colors.grey.shade700,
-            fontSize: 16,
+  void _showMetronomeSettings(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isDismissible: false,
+      enableDrag: true,
+      builder: (context) => Container(
+        width: MediaQuery.of(context).size.width * 0.95,
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(25)),
+        ),
+        padding: const EdgeInsets.only(bottom: 20),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            physics: const NeverScrollableScrollPhysics(),
+            child: StatefulBuilder(
+              builder: (context, setSheetState) => Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Text(
+                      'Configuración del Metrónomo',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                  ),
+                  _buildBpmControls(),
+                  const SizedBox(height: 30),
+                  FilledButton.icon(
+                    icon: Icon(
+                      _isMetronomeActive ? Icons.stop : Icons.play_arrow,
+                      size: 28,
+                    ),
+                    label: Text(_isMetronomeActive ? 'Detener' : 'Iniciar'),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(200, 50),
+                      backgroundColor: _isMetronomeActive
+                          ? Colors.red
+                          : Theme.of(context).colorScheme.primary,
+                    ),
+                    onPressed: () {
+                      if (_isMetronomeActive) {
+                        _stopMetronome();
+                      } else {
+                        _startMetronome();
+                      }
+                      setSheetState(() {});
+                    },
+                  ),
+                ],
+              ),
+            ),
           ),
-        ));
-      }
-
-      // Parentesis y contenido
-      spans.add(TextSpan(
-        text: '(',
-        style: TextStyle(
-          color: Colors.grey.shade700,
-          fontSize: 16,
-        ),
-      ));
-      spans.add(TextSpan(
-        text: match.group(1),
-        style: TextStyle(
-          color: Colors.blue.shade800,
-          fontWeight: FontWeight.bold,
-          fontSize: 18,
-          backgroundColor: Colors.blue.shade50,
-          fontFamily: 'RobotoMono',
-        ),
-      ));
-      spans.add(TextSpan(
-        text: ')',
-        style: TextStyle(
-          color: Colors.grey.shade700,
-          fontSize: 16,
-        ),
-      ));
-
-      lastEnd = match.end;
-    }
-
-    // Texto restante después del último acorde
-    if (lastEnd < text.length) {
-      spans.add(TextSpan(
-        text: text.substring(lastEnd),
-        style: TextStyle(
-          color: Colors.grey.shade800,
-          fontSize: 16,
-        ),
-      ));
-    }
-
-    return RichText(
-      text: TextSpan(children: spans),
-    );
-  }
-
-  void _openFullScreenEditor() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (context) => FullScreenLyricsEditor(
-          lyrics: _transposedLyrics,
-          onSave: (newLyrics) {
-            setState(() => _transposedLyrics = newLyrics);
-            _updateFirestoreLyrics(newLyrics);
-          },
         ),
       ),
     );
   }
 
+  void _showTranspositionMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isDismissible: false,
+      enableDrag: true,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(25)),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            physics: const NeverScrollableScrollPhysics(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Text(
+                    'Transposición',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.arrow_upward),
+                  title: const Text('Subir medio tono'),
+                  trailing: const Icon(Icons.keyboard_arrow_up),
+                  onTap: () {
+                    _transposeChords(true);
+                  },
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.arrow_downward),
+                  title: const Text('Bajar medio tono'),
+                  trailing: const Icon(Icons.keyboard_arrow_down),
+                  onTap: () {
+                    _transposeChords(false);
+                  },
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.restart_alt),
+                  title: const Text('Restaurar original'),
+                  trailing: const Icon(Icons.refresh),
+                  onTap: () {
+                    _restoreOriginalChords();
+                  },
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  bool get _isPlayingMetronome => _metronomeTimer != null;
+
+  void _handlePageChange(int index) {
+    setState(() {
+      _currentIndex = index;
+      _isInitialized = false;
+      _originalLyrics = '';
+      _transposedLyrics = '';
+      _metronomeTimer?.cancel();
+      _isVideoVisible = false;
+      _videoController?.dispose();
+      _videoController = null;
+      _videoOffsetX = 0;
+      _videoOffsetY = 0;
+      _scale = 1.0;
+      _fontSize = 16.0;
+      _landscapeFontSize = 16.0;
+      _localBpm = null;
+    });
+    _initializeSongStream();
+  }
+
+  Future<void> _initializeMetronome() async {
+    try {
+      final url = await AudioCache(prefix: 'assets/audio/').load('click.wav');
+      await _metronomePlayer.setSourceUrl(url.path);
+      await _metronomePlayer.setPlaybackRate(1.0);
+      await _metronomePlayer.setVolume(1.0);
+      await _metronomePlayer.setReleaseMode(ReleaseMode.release);
+    } catch (e) {
+      print('Error inicializando metrónomo: $e');
+    }
+  }
+
+  // 2. Restaurar método del diálogo BPM
   void _showBpmDialog(BuildContext context, int currentBpm) {
     final controller = TextEditingController(text: currentBpm.toString());
 
@@ -1934,10 +2031,20 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
           ),
           FilledButton(
             onPressed: () {
-              final newBpm = int.tryParse(controller.text) ?? currentBpm;
-              setState(() => _currentBpm = newBpm);
+              final newBpm = int.tryParse(controller.text) ?? effectiveBpm;
+              setState(() => _localBpm = newBpm);
+
+              // Reiniciar metrónomo si está activo
+              if (_isMetronomeActive) {
+                _metronomeTimer?.cancel();
+                _startMetronome();
+              }
+
               Navigator.pop(context);
               _updateBpmInFirestore(newBpm);
+
+              // Forzar actualización en el BottomSheet
+              if (mounted) setState(() {});
             },
             child: const Text('Guardar'),
           ),
@@ -1952,6 +2059,14 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
           .collection('songs')
           .doc(widget.songId)
           .update({'tempo': newBpm});
+
+      // Sincronizar valor local con Firestore después de actualización exitosa
+      if (mounted) {
+        setState(() {
+          _firestoreBpm = newBpm;
+          _localBpm = null; // Resetear ajuste temporal
+        });
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1961,27 +2076,32 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     }
   }
 
-  Future<void> _updateFirestoreLyrics(String newLyrics) async {
-    try {
-      await FirebaseFirestore.instance
-          .collection('songs')
-          .doc(widget.songId)
-          .update({
-        'lyrics': newLyrics,
-        'lyricsTranspose': newLyrics,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al guardar cambios: $e')),
-        );
-      }
-    }
+  void _showSettingsMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Container(
+        // ... contenido existente ...
+        child: Column(
+          children: [
+            ListTile(
+              title: const Text('Editar Canción'),
+              onTap: () {
+                Navigator.pop(context); // Cerrar menú
+                _navigateToEditScreen();
+              },
+            ),
+            ListTile(
+              title: const Text('Teleprompter'),
+              onTap: () {
+                Navigator.pop(context);
+                _navigateToTeleprompter();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
-
-  // Método para determinar si hay transposición activa
-  bool get hasActiveTransposition => _transposedLyrics != _originalLyrics;
 }
 
 class FullScreenLyricsEditor extends StatefulWidget {
@@ -2027,6 +2147,39 @@ class FullScreenLyricsEditorState extends State<FullScreenLyricsEditor> {
         child: LyricsInputField(
           controller: _controller,
           isFullScreen: true,
+        ),
+      ),
+    );
+  }
+}
+
+class _NavigationButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  const _NavigationButton({required this.icon, this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface.withOpacity(0.8),
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          )
+        ],
+      ),
+      child: IconButton(
+        icon: Icon(icon, size: 28),
+        color: Theme.of(context).colorScheme.primary,
+        onPressed: onPressed,
+        style: IconButton.styleFrom(
+          padding: const EdgeInsets.all(16),
+          visualDensity: VisualDensity.compact,
         ),
       ),
     );

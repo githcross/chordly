@@ -21,8 +21,9 @@ class PlaylistScreen extends StatelessWidget {
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
+                .collection('groups')
+                .doc(groupId)
                 .collection('playlists')
-                .where('groupId', isEqualTo: groupId)
                 .snapshots(),
             builder: (context, snapshot) {
               if (!snapshot.hasData) {
@@ -44,14 +45,60 @@ class PlaylistScreen extends StatelessWidget {
                 itemBuilder: (context, index) {
                   final playlist = playlists[index];
                   final data = playlist.data() as Map<String, dynamic>;
-                  return ListTile(
-                    title: Text(data['name'] ?? 'Sin nombre'),
-                    subtitle:
-                        Text('${(data['songs'] as List).length} canciones'),
-                    leading: const Icon(Icons.queue_music),
-                    onTap: () {
-                      _openPlaylist(context, playlist.id);
+                  return Dismissible(
+                    key: Key(playlist.id),
+                    direction: DismissDirection.endToStart,
+                    background: Container(
+                      color: Colors.red,
+                      alignment: Alignment.centerRight,
+                      padding: const EdgeInsets.only(right: 20),
+                      child: const Icon(
+                        Icons.delete,
+                        color: Colors.white,
+                      ),
+                    ),
+                    confirmDismiss: (direction) async {
+                      return await showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Eliminar playlist'),
+                          content: const Text(
+                              '¿Estás seguro de que quieres eliminar esta playlist?'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(false),
+                              child: const Text('Cancelar'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(true),
+                              child: const Text('Eliminar'),
+                            ),
+                          ],
+                        ),
+                      );
                     },
+                    onDismissed: (direction) {
+                      FirebaseFirestore.instance
+                          .collection('groups')
+                          .doc(groupId)
+                          .collection('playlists')
+                          .doc(playlist.id)
+                          .delete();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Playlist eliminada'),
+                        ),
+                      );
+                    },
+                    child: ListTile(
+                      title: Text(data['name'] ?? 'Sin nombre'),
+                      subtitle:
+                          Text('${(data['songs'] as List).length} canciones'),
+                      leading: const Icon(Icons.queue_music),
+                      onTap: () {
+                        _openPlaylist(context, playlist.id);
+                      },
+                    ),
                   );
                 },
               );
@@ -72,8 +119,11 @@ class PlaylistScreen extends StatelessWidget {
       ),
     );
 
+    print('Canciones seleccionadas: $selectedSongs');
+
     if (selectedSongs != null && selectedSongs.isNotEmpty) {
-      Navigator.push(
+      print('Navegando a CreatePlaylistScreen');
+      await Navigator.push(
         context,
         MaterialPageRoute(
           builder: (context) => CreatePlaylistScreen(
@@ -82,15 +132,19 @@ class PlaylistScreen extends StatelessWidget {
           ),
         ),
       );
+    } else {
+      print('No se seleccionaron canciones');
     }
   }
 
   void _openPlaylist(BuildContext context, String playlistId) {
+    print('ID de la playlist seleccionada: $playlistId');
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => PlaylistDetailsScreen(
           playlistId: playlistId,
+          groupId: groupId,
         ),
       ),
     );

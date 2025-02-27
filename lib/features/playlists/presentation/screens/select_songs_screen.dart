@@ -16,7 +16,7 @@ class SelectSongsScreen extends StatefulWidget {
 }
 
 class _SelectSongsScreenState extends State<SelectSongsScreen> {
-  final List<String> _selectedSongs = [];
+  final Set<String> _selectedSongs = {};
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
@@ -34,12 +34,18 @@ class _SelectSongsScreenState extends State<SelectSongsScreen> {
           style: AppTextStyles.appBarTitle(context),
         ),
         actions: [
-          TextButton.icon(
-            onPressed: _selectedSongs.isNotEmpty
-                ? () => Navigator.pop(context, _selectedSongs)
-                : null,
+          IconButton(
             icon: const Icon(Icons.check),
-            label: Text('Listo (${_selectedSongs.length})'),
+            onPressed: () {
+              if (_selectedSongs.isNotEmpty) {
+                Navigator.pop(context, _selectedSongs.toList());
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Selecciona al menos una canción')),
+                );
+              }
+            },
           ),
         ],
       ),
@@ -91,28 +97,31 @@ class _SelectSongsScreenState extends State<SelectSongsScreen> {
                         song.author.toLowerCase().contains(_searchQuery))
                     .toList();
 
+                if (songs.isEmpty) {
+                  return Center(
+                    child: Text(
+                      'No hay canciones disponibles',
+                      style: AppTextStyles.subtitle(context),
+                    ),
+                  );
+                }
+
                 return ListView.builder(
                   itemCount: songs.length,
                   itemBuilder: (context, index) {
                     final song = songs[index];
                     final isSelected = _selectedSongs.contains(song.id);
 
-                    return ListTile(
-                      leading: Icon(
-                        isSelected ? Icons.check_circle : Icons.music_note,
-                        color: isSelected
-                            ? Theme.of(context).colorScheme.primary
-                            : null,
-                      ),
+                    return CheckboxListTile(
                       title: Text(song.title),
                       subtitle: Text(song.author),
-                      trailing: Text(song.baseKey),
-                      onTap: () {
+                      value: isSelected,
+                      onChanged: (value) {
                         setState(() {
-                          if (isSelected) {
-                            _selectedSongs.remove(song.id);
-                          } else {
+                          if (value == true) {
                             _selectedSongs.add(song.id);
+                          } else {
+                            _selectedSongs.remove(song.id);
                           }
                         });
                       },

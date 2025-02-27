@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import 'package:chordly/features/playlists/models/playlist_model.dart';
 import 'package:chordly/core/theme/text_styles.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 class CreatePlaylistScreen extends StatefulWidget {
   final String groupId;
@@ -25,10 +27,12 @@ class _CreatePlaylistScreenState extends State<CreatePlaylistScreen> {
   late DateTime _selectedDate;
   List<PlaylistSongItem> _songs = [];
   bool _isLoading = true;
+  Duration _totalDuration = Duration.zero;
 
   @override
   void initState() {
     super.initState();
+    initializeDateFormatting('es');
     _selectedDate = DateTime.now();
     _loadSongs();
   }
@@ -44,11 +48,14 @@ class _CreatePlaylistScreenState extends State<CreatePlaylistScreen> {
       _songs = songsData.asMap().entries.map((entry) {
         final doc = entry.value;
         final data = doc.data() as Map<String, dynamic>;
+        final duration = _parseDuration(data['duration'] ?? '00:00');
+        _totalDuration += duration;
         return PlaylistSongItem(
           songId: doc.id,
           order: entry.key,
           transposedKey: data['baseKey'],
           notes: '',
+          duration: data['duration'] ?? '00:00',
         );
       }).toList();
 
@@ -57,6 +64,15 @@ class _CreatePlaylistScreenState extends State<CreatePlaylistScreen> {
       // Manejar error
       setState(() => _isLoading = false);
     }
+  }
+
+  Duration _parseDuration(String duration) {
+    final parts = duration.split(':');
+    if (parts.length == 2) {
+      return Duration(
+          minutes: int.parse(parts[0]), seconds: int.parse(parts[1]));
+    }
+    return Duration.zero;
   }
 
   @override
@@ -108,6 +124,40 @@ class _CreatePlaylistScreenState extends State<CreatePlaylistScreen> {
               ),
               maxLines: 3,
             ),
+            const SizedBox(height: 16),
+            ListTile(
+              title: const Text('Fecha y Hora de Uso'),
+              subtitle: Text(
+                DateFormat('EEEE, d MMMM yyyy - HH:mm', 'es')
+                    .format(_selectedDate),
+              ),
+              trailing: const Icon(Icons.calendar_today),
+              onTap: () async {
+                final selectedDate = await showDatePicker(
+                  context: context,
+                  initialDate: _selectedDate,
+                  firstDate: DateTime.now(),
+                  lastDate: DateTime(2100),
+                );
+                if (selectedDate != null) {
+                  final selectedTime = await showTimePicker(
+                    context: context,
+                    initialTime: TimeOfDay.fromDateTime(_selectedDate),
+                  );
+                  if (selectedTime != null) {
+                    setState(() {
+                      _selectedDate = DateTime(
+                        selectedDate.year,
+                        selectedDate.month,
+                        selectedDate.day,
+                        selectedTime.hour,
+                        selectedTime.minute,
+                      );
+                    });
+                  }
+                }
+              },
+            ),
             const SizedBox(height: 24),
             Text(
               'Canciones',
@@ -138,8 +188,9 @@ class _CreatePlaylistScreenState extends State<CreatePlaylistScreen> {
                 }
 
                 final songData = snapshot.data!.data() as Map<String, dynamic>;
-                final title = songData['title'] as String;
-                final author = songData['author'] as String;
+                final title = songData['title'] as String? ?? 'Sin título';
+                final author =
+                    songData['author'] as String? ?? 'Autor desconocido';
 
                 return Card(
                   child: ListTile(
@@ -168,8 +219,12 @@ class _CreatePlaylistScreenState extends State<CreatePlaylistScreen> {
     try {
       setState(() => _isLoading = true);
 
-      final playlistRef =
-          FirebaseFirestore.instance.collection('playlists').doc();
+      final playlistRef = FirebaseFirestore.instance
+          .collection('groups')
+          .doc(widget.groupId)
+          .collection('playlists')
+          .doc();
+
       final playlist = PlaylistModel(
         id: playlistRef.id,
         name: _nameController.text.trim(),
@@ -193,6 +248,7 @@ class _CreatePlaylistScreenState extends State<CreatePlaylistScreen> {
         'songs': _songs
             .map((song) => {
                   'songId': song.songId,
+                  'duration': song.duration,
                   'order': song.order,
                   'transposedKey': song.transposedKey,
                   'notes': song.notes,
@@ -250,6 +306,7 @@ class _CreatePlaylistScreenState extends State<CreatePlaylistScreen> {
           order: song.order,
           transposedKey: result,
           notes: song.notes,
+          duration: song.duration,
         );
       });
     }

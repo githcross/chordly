@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import 'package:chordly/core/theme/text_styles.dart';
 import 'package:chordly/features/playlists/models/playlist_model.dart';
 import 'package:chordly/features/playlists/presentation/screens/select_songs_screen.dart';
@@ -73,6 +74,40 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
                 border: OutlineInputBorder(),
               ),
               maxLines: 3,
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              title: const Text('Fecha y Hora de Uso'),
+              subtitle: Text(
+                DateFormat('EEEE, d MMMM yyyy - HH:mm', 'es')
+                    .format(_selectedDate),
+              ),
+              trailing: const Icon(Icons.calendar_today),
+              onTap: () async {
+                final selectedDate = await showDatePicker(
+                  context: context,
+                  initialDate: _selectedDate,
+                  firstDate: DateTime.now(),
+                  lastDate: DateTime(2100),
+                );
+                if (selectedDate != null) {
+                  final selectedTime = await showTimePicker(
+                    context: context,
+                    initialTime: TimeOfDay.fromDateTime(_selectedDate),
+                  );
+                  if (selectedTime != null) {
+                    setState(() {
+                      _selectedDate = DateTime(
+                        selectedDate.year,
+                        selectedDate.month,
+                        selectedDate.day,
+                        selectedTime.hour,
+                        selectedTime.minute,
+                      );
+                    });
+                  }
+                }
+              },
             ),
             const SizedBox(height: 24),
             Row(
@@ -166,55 +201,37 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
     );
 
     if (selectedSongs != null && selectedSongs.isNotEmpty) {
-      _addSelectedSongs(selectedSongs);
-    }
-  }
+      final newSongs = selectedSongs
+          .where((id) => !_songs.any((song) => song.songId == id))
+          .toList();
+      final newSongItems = await Future.wait(
+        newSongs.map((id) async {
+          final doc = await FirebaseFirestore.instance
+              .collection('songs')
+              .doc(id)
+              .get();
+          final data = doc.data() as Map<String, dynamic>;
+          return PlaylistSongItem(
+            songId: id,
+            order: _songs.length + newSongs.indexOf(id),
+            transposedKey: data['baseKey'] ?? '',
+            notes: '',
+            duration: data['duration']?.toString() ?? '00:00',
+          );
+        }),
+      );
 
-  void _addSelectedSongs(List<String> selectedSongIds) {
-    // Convertir la lista actual de canciones a un Set de IDs para búsqueda eficiente
-    final existingSongIds = Set<String>.from(
-      _songs.map((song) => song.songId),
-    );
+      setState(() {
+        _songs.addAll(newSongItems);
+      });
 
-    // Filtrar las canciones seleccionadas para excluir las que ya están en la playlist
-    final newSongIds = selectedSongIds.where(
-      (id) => !existingSongIds.contains(id),
-    );
-
-    if (newSongIds.isEmpty) {
-      // Mostrar mensaje si todas las canciones ya están en la playlist
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Las canciones seleccionadas ya están en la playlist'),
+        SnackBar(
+          content: Text('Se agregaron ${newSongs.length} canciones'),
           behavior: SnackBarBehavior.floating,
         ),
       );
-      return;
     }
-
-    // Agregar solo las canciones nuevas
-    setState(() {
-      _songs.addAll(
-        newSongIds.map(
-          (id) => PlaylistSongItem(
-            songId: id,
-            order: _songs.length,
-            transposedKey: '',
-            notes: '',
-          ),
-        ),
-      );
-    });
-
-    // Mostrar mensaje de éxito
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Se ${newSongIds.length == 1 ? 'agregó' : 'agregaron'} ${newSongIds.length} ${newSongIds.length == 1 ? 'canción' : 'canciones'}',
-        ),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
   }
 
   Future<void> _showTransposeDialog(
@@ -285,10 +302,9 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
         _songs[index] = PlaylistSongItem(
           songId: song.songId,
           order: song.order,
-          transposedKey: result == baseKey
-              ? ''
-              : result, // Si es el tono original, guardar vacío
+          transposedKey: result == baseKey ? '' : result,
           notes: song.notes,
+          duration: song.duration,
         );
       });
     }
@@ -300,30 +316,28 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
     try {
       setState(() => _isLoading = true);
 
-      // Actualizar el orden de las canciones antes de guardar
-      final updatedSongs = List<PlaylistSongItem>.from(_songs);
-      for (var i = 0; i < updatedSongs.length; i++) {
-        updatedSongs[i] = PlaylistSongItem(
-          songId: updatedSongs[i].songId,
-          order: i,
-          transposedKey: updatedSongs[i].transposedKey,
-          notes: updatedSongs[i].notes,
-        );
+      final playlistRef = FirebaseFirestore.instance
+          .collection('groups')
+          .doc(widget.playlist.groupId)
+          .collection('playlists')
+          .doc(widget.playlist.id);
+
+      final playlistDoc = await playlistRef.get();
+      if (!playlistDoc.exists) {
+        throw Exception('La playlist no existe');
       }
 
-      await FirebaseFirestore.instance
-          .collection('playlists')
-          .doc(widget.playlist.id)
-          .update({
+      await playlistRef.update({
         'name': _nameController.text.trim(),
         'notes': _notesController.text.trim(),
         'date': _selectedDate,
-        'songs': updatedSongs
+        'songs': _songs
             .map((song) => {
                   'songId': song.songId,
                   'order': song.order,
                   'transposedKey': song.transposedKey,
                   'notes': song.notes,
+                  'duration': song.duration,
                 })
             .toList(),
         'updatedAt': FieldValue.serverTimestamp(),

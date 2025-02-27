@@ -27,12 +27,14 @@ class PlaylistSongItem {
   final int order;
   final String transposedKey;
   final String notes;
+  final String duration;
 
   PlaylistSongItem({
     required this.songId,
     required this.order,
     required this.transposedKey,
-    this.notes = '',
+    required this.notes,
+    required this.duration,
   });
 }
 

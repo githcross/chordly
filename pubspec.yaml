@@ -34,6 +34,7 @@ dependencies:
   syncfusion_flutter_pdf: ^24.2.9
   path_provider: ^2.1.2
   audioplayers: ^5.2.1
+  just_audio: ^0.9.34
   file_picker: ^6.1.1
   shared_preferences: ^2.2.2
   youtube_player_flutter: ^8.1.2
@@ -53,6 +54,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/images/
-    - assets/audio/
+    - assets/audio/click.wav
     - lib/assets/audio/click.wav
+  fonts:
+    - family: Handlee

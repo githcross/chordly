@@ -47,7 +47,8 @@ class SongModel {
       lyrics: map['lyrics'] ?? '',
       baseKey: map['baseKey'] ?? '',
       tags: List<String>.from(map['tags'] ?? []),
-      tempo: map['tempo'] ?? 0,
+      tempo:
+          map['tempo'] != null ? int.tryParse(map['tempo'].toString()) ?? 0 : 0,
       duration: map['duration'] ?? '00:00',
       status: map['status'] ?? 'borrador',
       createdBy: map['createdBy'] ?? '',

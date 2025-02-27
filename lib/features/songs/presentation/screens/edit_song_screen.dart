@@ -1050,44 +1050,25 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
     setState(() {});
   }
 
-  void _saveSong() async {
+  Future<void> _saveSong() async {
     try {
-      final newLyrics = _lyricsController.text;
+      final songRef =
+          FirebaseFirestore.instance.collection('songs').doc(widget.songId);
 
-      // Convertir a formato top usando LyricDocument
-      final lyricDoc = LyricDocument.fromInlineText(newLyrics);
-      final topFormat = lyricDoc.toTopFormat();
-
-      final songData = {
+      await songRef.update({
         'title': _titleController.text,
         'author': _authorController.text,
-        'lyrics': newLyrics,
-        'lyricsTranspose': newLyrics,
-        'topFormat': topFormat,
-        'key': _selectedKey,
-        'tempo': _tempoController.text,
-        'videoUrl': _videoUrlController.text,
-        'startTime': _videoNotesController.text,
+        'lyrics': _lyricsController.text,
+        'tempo': int.tryParse(_tempoController.text) ?? 0,
+        'baseKey': _selectedKey,
         'tags': _selectedTags,
-        'lastUpdated': FieldValue.serverTimestamp(),
-      };
-
-      if (widget.isEditing && widget.songId != null) {
-        await FirebaseFirestore.instance
-            .collection('songs')
-            .doc(widget.songId)
-            .update(songData);
-      } else {
-        songData['groupId'] = widget.groupId;
-        songData['createdAt'] = FieldValue.serverTimestamp();
-        await FirebaseFirestore.instance.collection('songs').add(songData);
-      }
+      });
 
       if (mounted) {
-        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Canción guardada exitosamente')),
+          const SnackBar(content: Text('Canción actualizada exitosamente')),
         );
+        Navigator.pop(context, true);
       }
     } catch (e) {
       if (mounted) {

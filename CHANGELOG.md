@@ -83,4 +83,26 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 - Búsqueda y filtrado de canciones
 - Sistema de etiquetas
 - Colaboración en tiempo real
-- Gestión de grupos y roles de usuario 
+- Gestión de grupos y roles de usuario
+
+## [2.0.1] - 2024-05-20
+
+### Nuevas Características
+- 🎵 Sistema de metrónomo profesional con compensación de latencia
+- 🔊 Sonido de click optimizado (WAV 2kHz 50ms)
+
+### Mejoras
+- 🖱️ Menús persistentes que requieren gesto explícito para cerrar
+- 🎨 Feedback visual en botones de metrónomo (color rojo al activar)
+- ⚡ Precarga de assets de audio para mejor rendimiento
+
+### Correcciones
+- 🛠 Parámetro faltante `isEditing` en `EditSongScreen`
+- 🚪 Cierre automático de menús al navegar entre pantallas
+- 🔄 Sincronización Firestore-UI para cambios de BPM en tiempo real
+- 🎚 Estado persistente en transposiciones múltiples
+
+### Técnicas
+- 📱 Prioridad de hilo `THREAD_PRIORITY_URGENT_AUDIO` en Android
+- 🧹 Limpieza de listeners y timers no utilizados
+- 📦 Actualización a `audioplayers: ^5.2.1` 

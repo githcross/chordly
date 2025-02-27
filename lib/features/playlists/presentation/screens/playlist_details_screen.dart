@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -8,13 +9,16 @@ import 'package:chordly/features/playlists/presentation/screens/edit_playlist_sc
 import 'package:chordly/features/songs/presentation/screens/song_details_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:rxdart/rxdart.dart';
+import 'package:flutter/rendering.dart';
 
 class PlaylistDetailsScreen extends StatefulWidget {
   final String playlistId;
+  final String groupId;
 
   const PlaylistDetailsScreen({
     Key? key,
     required this.playlistId,
+    required this.groupId,
   }) : super(key: key);
 
   @override
@@ -27,7 +31,6 @@ class _PlaylistDetailsScreenState extends State<PlaylistDetailsScreen> {
   @override
   void initState() {
     super.initState();
-    // Inicializar datos de localización
     initializeDateFormatting('es');
   }
 
@@ -35,321 +38,241 @@ class _PlaylistDetailsScreenState extends State<PlaylistDetailsScreen> {
   Widget build(BuildContext context) {
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
+          .collection('groups')
+          .doc(widget.groupId)
           .collection('playlists')
           .doc(widget.playlistId)
           .snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return Scaffold(
-            appBar: AppBar(),
-            body: Center(child: Text('Error: ${snapshot.error}')),
-          );
-        }
-
-        if (!snapshot.hasData) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+        if (!snapshot.hasData || !snapshot.data!.exists) {
+          return _buildErrorScreen('Playlist no encontrada');
         }
 
         final data = snapshot.data!.data() as Map<String, dynamic>;
-        final List<dynamic> songs = (data['songs'] as List?) ?? [];
+        final songs = (data['songs'] as List?) ?? [];
+        final date = (data['date'] as Timestamp).toDate();
 
         return Scaffold(
-          appBar: AppBar(
-            title:
-                Text(data['name'], style: AppTextStyles.appBarTitle(context)),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.info_outline),
-                tooltip: 'Información',
-                onPressed: () {
-                  showDialog(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('Información'),
-                      content: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          ListTile(
-                            leading: const Icon(Icons.calendar_today),
-                            title: const Text('Fecha de creación'),
-                            subtitle: Text(
-                              DateFormat('EEEE, d MMMM yyyy', 'es')
-                                  .format(data['createdAt'].toDate()),
-                            ),
+          body: CustomScrollView(
+            slivers: [
+              SliverAppBar(
+                expandedHeight: 220,
+                flexibleSpace: FlexibleSpaceBar(
+                  background: Stack(
+                    children: [
+                      // Fondo con efecto de profundidad
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Colors.blue.shade700,
+                              Colors.indigo.shade600,
+                            ],
                           ),
-                          if (data['updatedAt'] != null)
-                            ListTile(
-                              leading: const Icon(Icons.update),
-                              title: const Text('Última actualización'),
-                              subtitle: Text(
-                                DateFormat('dd/MM/yyyy HH:mm')
-                                    .format(data['updatedAt'].toDate()),
-                              ),
-                            ),
-                        ],
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('Cerrar'),
                         ),
-                      ],
-                    ),
-                  );
-                },
+                      ),
+                      BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                        child: Container(color: Colors.black.withOpacity(0.1)),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Text(
+                              data['name'],
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.95),
+                                fontSize: 28,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.8,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 20),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                _buildBannerItem(
+                                  '${(data['songs'] as List).length} canciones',
+                                ),
+                                const SizedBox(width: 16),
+                                _buildBannerItem(
+                                  _formatDurationCompact(
+                                      _calculateTotalDuration(
+                                          data['songs'] as List)),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Icon(Icons.calendar_month,
+                                    color: Colors.white.withOpacity(0.9),
+                                    size: 18),
+                                const SizedBox(width: 8),
+                                Text(
+                                  DateFormat('EEEE, d MMMM yyyy - HH:mm', 'es')
+                                      .format(date),
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.9),
+                                    fontSize: 14.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              IconButton(
-                icon: const Icon(Icons.edit),
-                onPressed: () => _editPlaylist(context, data),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (data['notes']?.isNotEmpty ?? false)
+                        _buildNotesSection(data['notes']),
+                      const SizedBox(height: 24),
+                      Text(
+                        'Canciones',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ],
-          ),
-          body: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              if (data['notes']?.isNotEmpty ?? false)
-                _buildInfoSection(context, data),
-              const SizedBox(height: 24),
-              Text(
-                'Canciones',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 8),
               _buildSongList(songs),
             ],
+          ),
+          floatingActionButton: FloatingActionButton(
+            backgroundColor: Colors.blue.shade700,
+            child: const Icon(Icons.edit, color: Colors.white),
+            onPressed: () => _editPlaylist(context, data),
           ),
         );
       },
     );
   }
 
-  Widget _buildInfoSection(BuildContext context, Map<String, dynamic> data) {
-    return Card(
-      elevation: 1,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.secondaryContainer,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                Icons.notes,
-                color: Theme.of(context).colorScheme.secondary,
-                size: 20,
-              ),
+  Widget _buildNotesSection(String notes) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade800.withOpacity(0.4),
+          borderRadius: BorderRadius.circular(12),
+          border: Border(
+            left: BorderSide(
+              width: 4,
+              color: Colors.blue.shade300.withOpacity(0.3),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Notas',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.secondary,
-                        ),
-                  ),
-                  Text(
-                    data['notes'],
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ],
-              ),
-            ),
-          ],
+          ),
+        ),
+        child: Text(
+          notes,
+          style: TextStyle(
+            fontSize: 15,
+            color: Colors.white.withOpacity(0.85),
+            height: 1.5,
+          ),
         ),
       ),
     );
   }
 
   Widget _buildSongList(List<dynamic> songs) {
-    return StreamBuilder<List<DocumentSnapshot>>(
-      stream: _getSongsStream(songs),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
+    return SliverList(
+      delegate: SliverChildBuilderDelegate(
+        (context, index) {
+          final song = songs[index];
+          final songId = song is Map ? song['songId'] : song;
 
-        final songDocs = snapshot.data!;
-        _calculateTotalDuration(songDocs);
+          return FutureBuilder<DocumentSnapshot>(
+            future: FirebaseFirestore.instance
+                .collection('songs')
+                .doc(songId)
+                .get(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) return const SizedBox.shrink();
 
-        return ReorderableListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: songDocs.length + 1,
-          onReorder: (oldIndex, newIndex) {
-            if (oldIndex >= songs.length || newIndex > songs.length) return;
+              final songData = snapshot.data!.data() as Map<String, dynamic>;
+              final transposedKey = song is Map ? song['transposedKey'] : '';
 
-            setState(() {
-              if (newIndex > oldIndex) newIndex--;
-              final item = songs.removeAt(oldIndex);
-              songs.insert(newIndex, item);
-
-              FirebaseFirestore.instance
-                  .collection('playlists')
-                  .doc(widget.playlistId)
-                  .update({'songs': songs});
-            });
-          },
-          itemBuilder: (context, index) {
-            if (index == songDocs.length) {
               return ListTile(
-                key: const Key('summary'),
-                leading: const Icon(Icons.timer),
+                onTap: () =>
+                    _navigateToSongDetails(context, songId, index, songs),
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade800.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.music_note_outlined,
+                    color: Colors.blue.shade600.withOpacity(0.8),
+                    size: 20,
+                  ),
+                ),
                 title: Text(
-                  'Tiempo total: ${_formatDuration(_totalDuration)}',
-                  style: Theme.of(context).textTheme.titleMedium,
+                  songData['title'] ?? 'Sin título',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.9),
+                    fontWeight: FontWeight.w500,
+                    fontSize: 16,
+                  ),
+                ),
+                subtitle: Text(
+                  songData['author'] ?? 'Autor desconocido',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.7),
+                    fontSize: 14,
+                  ),
+                ),
+                trailing: songData['duration']?.isNotEmpty ?? false
+                    ? Container(
+                        padding:
+                            EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade800.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          songData['duration']!,
+                          style: TextStyle(
+                            color: Colors.blue.shade600.withOpacity(0.9),
+                            fontWeight: FontWeight.w500,
+                            fontSize: 13,
+                          ),
+                        ),
+                      )
+                    : Text(
+                        '--:--',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.4),
+                          fontSize: 13,
+                        ),
+                      ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
                 ),
               );
-            }
-
-            final songDoc = songDocs[index];
-            final songData = songDoc.data() as Map<String, dynamic>;
-            final duration = _parseDuration(songData['duration']);
-
-            return ListTile(
-              key: Key(songDoc.id),
-              leading: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.drag_handle),
-                  const SizedBox(width: 8),
-                  Text('${index + 1}'),
-                ],
-              ),
-              title: Text(songData['title']),
-              subtitle: Text(songData['author'] ?? ''),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Obtener la tonalidad de la canción
-                  if ((songs[index] is Map) &&
-                      ((songs[index]['transposedKey'] as String?)?.isNotEmpty ??
-                          false))
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      margin: const EdgeInsets.only(right: 8),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.secondaryContainer,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        songs[index]['transposedKey'],
-                        style: TextStyle(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSecondaryContainer,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  if ((songs[index] is! Map ||
-                          ((songs[index]['transposedKey'] as String?)
-                                  ?.isEmpty ??
-                              true)) &&
-                      (songData['baseKey']?.isNotEmpty ?? false))
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      margin: const EdgeInsets.only(right: 8),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primaryContainer,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        songData['baseKey'],
-                        style: TextStyle(
-                          color:
-                              Theme.of(context).colorScheme.onPrimaryContainer,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  Text(_formatDuration(duration)),
-                ],
-              ),
-              onTap: () => _navigateToSongDetails(
-                context,
-                songDoc.id,
-                index,
-                songs,
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Duration _parseDuration(String? durationStr) {
-    if (durationStr == null) return Duration.zero;
-    final parts = durationStr.split(':');
-    if (parts.length != 2) return Duration.zero;
-
-    try {
-      final minutes = int.parse(parts[0]);
-      final seconds = int.parse(parts[1]);
-      return Duration(minutes: minutes, seconds: seconds);
-    } catch (e) {
-      return Duration.zero;
-    }
-  }
-
-  String _formatDuration(Duration duration) {
-    final minutes = duration.inMinutes;
-    final seconds = duration.inSeconds % 60;
-    return '$minutes:${seconds.toString().padLeft(2, '0')}';
-  }
-
-  void _calculateTotalDuration(List<DocumentSnapshot> songs) {
-    _totalDuration = songs.fold(
-      Duration.zero,
-      (total, song) => total + _parseDuration((song.data() as Map)['duration']),
-    );
-  }
-
-  Stream<List<DocumentSnapshot>> _getSongsStream(List<dynamic> songs) {
-    if (songs.isEmpty) return Stream.value([]);
-
-    // Extraer los IDs de las canciones del mapa
-    final List<String> ids = songs.map((item) {
-      if (item is Map) {
-        return item['songId'] as String;
-      }
-      return item as String;
-    }).toList();
-
-    // Dividir en chunks de 10 para evitar límites de Firestore
-    final chunks = <List<String>>[];
-    for (var i = 0; i < ids.length; i += 10) {
-      chunks.add(
-        ids.sublist(i, i + 10 > ids.length ? ids.length : i + 10),
-      );
-    }
-
-    // Combinar streams para cada chunk
-    return Rx.combineLatest(
-      chunks.map(
-        (chunk) => FirebaseFirestore.instance
-            .collection('songs')
-            .where(FieldPath.documentId, whereIn: chunk)
-            .snapshots()
-            .map((snapshot) => snapshot.docs),
+            },
+          );
+        },
+        childCount: songs.length,
       ),
-      (List<List<DocumentSnapshot<Object?>>> results) {
-        final allDocs = results.expand((docs) => docs).toList();
-        // Ordenar según el orden original de songIds
-        allDocs.sort((a, b) => ids.indexOf(a.id).compareTo(ids.indexOf(b.id)));
-        return allDocs;
-      },
     );
   }
 
@@ -359,11 +282,8 @@ class _PlaylistDetailsScreenState extends State<PlaylistDetailsScreen> {
     int index,
     List<dynamic> songs,
   ) {
-    // Extraer los IDs de las canciones
     final songIds = songs.map((item) {
-      if (item is Map) {
-        return item['songId'] as String;
-      }
+      if (item is Map) return item['songId'] as String;
       return item as String;
     }).toList();
 
@@ -372,15 +292,18 @@ class _PlaylistDetailsScreenState extends State<PlaylistDetailsScreen> {
       MaterialPageRoute(
         builder: (context) => SongDetailsScreen(
           songId: songId,
-          groupId: '',
+          groupId: widget.groupId,
           playlistSongs: songIds,
           currentIndex: index,
+          fromPlaylist: true,
         ),
       ),
     );
   }
 
   void _editPlaylist(BuildContext context, Map<String, dynamic> data) {
+    print('ID de la playlist seleccionada: ${widget.playlistId}'); // Depuración
+    print('ID del grupo: ${widget.groupId}'); // Depuración
     final List<dynamic> rawSongs = (data['songs'] as List?) ?? [];
 
     final songs = rawSongs.map((item) {
@@ -397,13 +320,15 @@ class _PlaylistDetailsScreenState extends State<PlaylistDetailsScreen> {
         transposedKey:
             item is Map ? item['transposedKey'] as String? ?? '' : '',
         notes: item is Map ? item['notes'] as String? ?? '' : '',
+        duration:
+            item is Map ? (item['duration'] as String?) ?? '00:00' : '00:00',
       );
     }).toList();
 
     final playlist = PlaylistModel(
       id: widget.playlistId,
       name: data['name'],
-      groupId: data['groupId'],
+      groupId: widget.groupId,
       date: (data['date'] as Timestamp).toDate(),
       createdBy: data['createdBy'],
       createdAt: (data['createdAt'] as Timestamp).toDate(),
@@ -415,6 +340,119 @@ class _PlaylistDetailsScreenState extends State<PlaylistDetailsScreen> {
       context,
       MaterialPageRoute(
         builder: (context) => EditPlaylistScreen(playlist: playlist),
+      ),
+    );
+  }
+
+  Widget _buildErrorScreen(String errorMessage) {
+    return Scaffold(
+      appBar: AppBar(),
+      body: Center(child: Text(errorMessage)),
+    );
+  }
+
+  Widget _buildStatsRow(Map<String, dynamic> data, Duration totalDuration) {
+    return Container(
+      padding: EdgeInsets.symmetric(vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: _buildStatItem(
+        Icons.schedule,
+        _formatDurationCompact(totalDuration),
+        'Duración total',
+        iconColor: Colors.white.withOpacity(0.85),
+        textColor: Colors.white.withOpacity(0.9),
+      ),
+    );
+  }
+
+  Widget _buildStatItem(IconData icon, String value, String label,
+      {Color? iconColor, Color? textColor}) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: iconColor, size: 22),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          style: TextStyle(
+            color: textColor,
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.85),
+            fontSize: 13,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatDurationCompact(Duration duration) {
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    final seconds = duration.inSeconds.remainder(60);
+
+    return [
+      if (hours > 0) '${hours}h',
+      '${minutes}m',
+      if (seconds > 0) '${seconds}s'
+    ].join(' ');
+  }
+
+  Duration _calculateTotalDuration(List<dynamic> songs) {
+    Duration totalDuration = Duration.zero;
+
+    for (var song in songs) {
+      if (song is Map && song['duration'] != null) {
+        final durationString = song['duration'].toString();
+        final parts = durationString.split(':');
+
+        // Manejar formato mm:ss
+        if (parts.length == 2) {
+          totalDuration += Duration(
+            minutes: int.tryParse(parts[0]) ?? 0,
+            seconds: int.tryParse(parts[1]) ?? 0,
+          );
+        }
+        // Manejar formato hh:mm:ss
+        else if (parts.length == 3) {
+          totalDuration += Duration(
+            hours: int.tryParse(parts[0]) ?? 0,
+            minutes: int.tryParse(parts[1]) ?? 0,
+            seconds: int.tryParse(parts[2]) ?? 0,
+          );
+        }
+      }
+    }
+    return totalDuration;
+  }
+
+  Widget _buildBannerItem(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.2),
+          width: 1,
+        ),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: Colors.white.withOpacity(0.9),
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+        ),
       ),
     );
   }

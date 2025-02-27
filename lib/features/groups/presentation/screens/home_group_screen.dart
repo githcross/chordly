@@ -26,6 +26,7 @@ import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:chordly/features/auth/providers/auth_provider.dart';
+import 'package:chordly/features/playlists/presentation/screens/create_playlist_screen.dart';
 
 class HomeGroupScreen extends ConsumerStatefulWidget {
   final GroupModel group;
@@ -404,8 +405,8 @@ class _HomeGroupScreenState extends ConsumerState<HomeGroupScreen> {
     }
   }
 
-  void _createPlaylist(BuildContext context) {
-    Navigator.push(
+  void _createPlaylist(BuildContext context) async {
+    final selectedSongs = await Navigator.push<List<String>>(
       context,
       MaterialPageRoute(
         builder: (context) => SelectSongsScreen(
@@ -413,6 +414,18 @@ class _HomeGroupScreenState extends ConsumerState<HomeGroupScreen> {
         ),
       ),
     );
+
+    if (selectedSongs != null && selectedSongs.isNotEmpty) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => CreatePlaylistScreen(
+            groupId: widget.group.id,
+            selectedSongs: selectedSongs,
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _exportBackup() async {
