@@ -137,9 +137,6 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
           _transposedLyrics =
               data['lyricsTranspose']?.toString() ?? _originalLyrics;
           _isInitialized = true;
-          if (!_isMetronomeActive) {
-            _localBpm = null;
-          }
         });
       }
     });

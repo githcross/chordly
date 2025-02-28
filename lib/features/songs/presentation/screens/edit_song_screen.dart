@@ -1052,17 +1052,35 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
 
   Future<void> _saveSong() async {
     try {
+      final lyricDoc = LyricDocument.fromInlineText(_lyricsController.text);
+      final topFormat = lyricDoc.toTopFormat();
+      final videoUrl = _videoUrlController.text.trim();
+      final videoNotes = _videoNotesController.text.trim();
+
       final songRef =
           FirebaseFirestore.instance.collection('songs').doc(widget.songId);
 
-      await songRef.update({
+      final updateData = {
         'title': _titleController.text,
         'author': _authorController.text,
         'lyrics': _lyricsController.text,
+        'lyricsTranspose': _lyricsController.text,
+        'topFormat': topFormat,
         'tempo': int.tryParse(_tempoController.text) ?? 0,
         'baseKey': _selectedKey,
         'tags': _selectedTags,
-      });
+        'duration': _durationController.text.trim(),
+        'status': _status,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      if (videoUrl.isNotEmpty) {
+        updateData['videoReference'] = {'url': videoUrl, 'notes': videoNotes};
+      } else {
+        updateData['videoReference'] = FieldValue.delete();
+      }
+
+      await songRef.update(updateData);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
