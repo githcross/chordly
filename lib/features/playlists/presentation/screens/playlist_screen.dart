@@ -91,7 +91,10 @@ class PlaylistScreen extends StatelessWidget {
                       );
                     },
                     child: ListTile(
-                      title: Text(data['name'] ?? 'Sin nombre'),
+                      title: Text(
+                        data['name'] ?? 'Sin nombre',
+                        style: Theme.of(context).textTheme.bodyLarge,
+                      ),
                       subtitle:
                           Text('${(data['songs'] as List).length} canciones'),
                       leading: const Icon(Icons.queue_music),

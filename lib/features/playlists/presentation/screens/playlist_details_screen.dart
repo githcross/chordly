@@ -60,22 +60,25 @@ class _PlaylistDetailsScreenState extends State<PlaylistDetailsScreen> {
                 flexibleSpace: FlexibleSpaceBar(
                   background: Stack(
                     children: [
-                      // Fondo con efecto de profundidad
+                      // Fondo degradado oscuro
                       Container(
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                             colors: [
-                              Colors.blue.shade700,
-                              Colors.indigo.shade600,
+                              const Color(0xFF1A1A2E), // Azul noche intenso
+                              const Color(0xFF16213E), // Azul marino profundo
                             ],
                           ),
                         ),
                       ),
                       BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                        child: Container(color: Colors.black.withOpacity(0.1)),
+                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                        child: Container(
+                          color: const Color(0x80212A3E).withOpacity(
+                              0.3), // Azul oscuro semi-transparente
+                        ),
                       ),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
@@ -85,11 +88,18 @@ class _PlaylistDetailsScreenState extends State<PlaylistDetailsScreen> {
                           children: [
                             Text(
                               data['name'],
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.95),
-                                fontSize: 28,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.8,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleLarge
+                                  ?.copyWith(
+                                color: Colors.white,
+                                shadows: [
+                                  Shadow(
+                                    color: Colors.black.withOpacity(0.3),
+                                    blurRadius: 4,
+                                    offset: const Offset(1, 1),
+                                  ),
+                                ],
                               ),
                               textAlign: TextAlign.center,
                             ),
@@ -119,7 +129,7 @@ class _PlaylistDetailsScreenState extends State<PlaylistDetailsScreen> {
                                   DateFormat('EEEE, d MMMM yyyy - HH:mm', 'es')
                                       .format(date),
                                   style: TextStyle(
-                                    color: Colors.white.withOpacity(0.9),
+                                    color: Colors.white,
                                     fontSize: 14.5,
                                   ),
                                 ),
@@ -153,9 +163,12 @@ class _PlaylistDetailsScreenState extends State<PlaylistDetailsScreen> {
             ],
           ),
           floatingActionButton: FloatingActionButton(
-            backgroundColor: Colors.blue.shade700,
-            child: const Icon(Icons.edit, color: Colors.white),
             onPressed: () => _editPlaylist(context, data),
+            child: const Icon(Icons.edit),
+            heroTag: 'playlist_details_fab',
+            mini: false,
+            elevation: 4,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
         );
       },
@@ -168,12 +181,12 @@ class _PlaylistDetailsScreenState extends State<PlaylistDetailsScreen> {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.grey.shade800.withOpacity(0.4),
+          color: Theme.of(context).colorScheme.surfaceVariant,
           borderRadius: BorderRadius.circular(12),
           border: Border(
             left: BorderSide(
               width: 4,
-              color: Colors.blue.shade300.withOpacity(0.3),
+              color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
             ),
           ),
         ),
@@ -181,7 +194,7 @@ class _PlaylistDetailsScreenState extends State<PlaylistDetailsScreen> {
           notes,
           style: TextStyle(
             fontSize: 15,
-            color: Colors.white.withOpacity(0.85),
+            color: Theme.of(context).colorScheme.onSurface,
             height: 1.5,
           ),
         ),
@@ -216,19 +229,20 @@ class _PlaylistDetailsScreenState extends State<PlaylistDetailsScreen> {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: Colors.blue.shade800.withOpacity(0.2),
+                    color: Colors.black.withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     Icons.music_note_outlined,
-                    color: Colors.blue.shade600.withOpacity(0.8),
+                    color:
+                        Theme.of(context).colorScheme.primary.withOpacity(0.8),
                     size: 20,
                   ),
                 ),
                 title: Text(
                   songData['title'] ?? 'Sin título',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontWeight: FontWeight.w500,
                     fontSize: 16,
                   ),
@@ -245,13 +259,13 @@ class _PlaylistDetailsScreenState extends State<PlaylistDetailsScreen> {
                         padding:
                             EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
-                          color: Colors.blue.shade800.withOpacity(0.2),
+                          color: Theme.of(context).colorScheme.surfaceVariant,
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
                           songData['duration']!,
                           style: TextStyle(
-                            color: Colors.blue.shade600.withOpacity(0.9),
+                            color: Theme.of(context).colorScheme.onSurface,
                             fontWeight: FontWeight.w500,
                             fontSize: 13,
                           ),

@@ -3,18 +3,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chordly/core/theme/text_styles.dart';
 import 'package:chordly/core/providers/theme_provider.dart';
 
-class SettingsScreen extends ConsumerWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  bool notificationsEnabled = true; // Estado local para las notificaciones
+
+  @override
+  Widget build(BuildContext context) {
     final themeState = ref.watch(themeProvider);
 
     return Scaffold(
       appBar: AppBar(
         title: Text(
           'Configuración',
-          style: AppTextStyles.appBarTitle(context),
+          style: Theme.of(context).textTheme.titleLarge,
         ),
       ),
       body: ListView(
@@ -23,7 +30,7 @@ class SettingsScreen extends ConsumerWidget {
           ListTile(
             title: Text(
               'Apariencia',
-              style: AppTextStyles.sectionTitle(context),
+              style: Theme.of(context).textTheme.titleLarge,
             ),
           ),
           Padding(
@@ -33,7 +40,7 @@ class SettingsScreen extends ConsumerWidget {
               children: [
                 Text(
                   'Tema',
-                  style: AppTextStyles.subtitle(context),
+                  style: Theme.of(context).textTheme.bodyLarge,
                 ),
                 const SizedBox(height: 8),
                 SegmentedButton<String>(
@@ -61,11 +68,28 @@ class SettingsScreen extends ConsumerWidget {
                       await ref.read(themeProvider.notifier).setTheme(newTheme);
                     }
                   },
+                  style: SegmentedButton.styleFrom(
+                    selectedBackgroundColor:
+                        Theme.of(context).colorScheme.surface,
+                    selectedForegroundColor:
+                        Theme.of(context).colorScheme.onSurface,
+                  ),
                 ),
               ],
             ),
           ),
           const Divider(height: 32),
+          SwitchListTile(
+            title: Text(
+              'Notificaciones',
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+            value: notificationsEnabled,
+            onChanged: (value) => setState(() => notificationsEnabled = value),
+            activeTrackColor:
+                Theme.of(context).colorScheme.primary.withOpacity(0.3),
+            inactiveTrackColor: Theme.of(context).colorScheme.surfaceVariant,
+          ),
           // Aquí se pueden agregar más secciones de configuración
         ],
       ),

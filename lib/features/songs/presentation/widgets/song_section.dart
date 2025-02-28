@@ -3,12 +3,12 @@ import 'package:flutter/material.dart';
 class SongSection {
   final String type;
   final String content;
-  final Color color;
+  final Color? color;
 
   const SongSection({
     required this.type,
     required this.content,
-    required this.color,
+    this.color,
   });
 
   @override

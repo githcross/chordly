@@ -445,7 +445,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         centerTitle: false,
         title: Text(
           'Chordly',
-          style: AppTextStyles.appBarTitle(context),
+          style: Theme.of(context).textTheme.displayLarge,
         ),
         actions: [
           IconButton(

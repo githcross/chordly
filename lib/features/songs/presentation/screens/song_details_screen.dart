@@ -558,7 +558,9 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
           Expanded(
             child: Text(
               songData['title'] ?? 'Detalles de canción',
-              style: Theme.of(context).textTheme.bodyLarge,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -566,7 +568,7 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
           Text(
             key,
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.primary,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
           ),
           const SizedBox(width: 8),
@@ -578,7 +580,7 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
           Text(
             '$bpm BPM',
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.secondary,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
           ),
         ],
@@ -1455,12 +1457,14 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
             margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: section.color.withOpacity(0.1),
+                backgroundColor:
+                    section.color?.withOpacity(0.1) ?? Colors.transparent,
                 foregroundColor: section.color,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
                   side: BorderSide(
-                    color: section.color.withOpacity(0.5),
+                    color:
+                        section.color?.withOpacity(0.5) ?? Colors.transparent,
                     width: 2,
                   ),
                 ),
@@ -1720,7 +1724,8 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                   side: BorderSide(
-                    color: section.color.withOpacity(0.3),
+                    color:
+                        section.color?.withOpacity(0.3) ?? Colors.transparent,
                     width: 2,
                   ),
                 ),
@@ -1740,7 +1745,8 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
                             color: section.color,
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                              color: section.color.withOpacity(0.3),
+                              color: section.color?.withOpacity(0.3) ??
+                                  Colors.transparent,
                               width: 1,
                             ),
                           ),
@@ -1765,7 +1771,7 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
                       child: Text(
                         section.content,
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              color: Theme.of(context).colorScheme.primary,
+                              color: Theme.of(context).colorScheme.onSurface,
                             ),
                       ),
                     ),

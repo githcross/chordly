@@ -17,11 +17,13 @@ class AppTextStyles {
   }
 
   // Títulos de secciones
-  static TextStyle sectionTitle(BuildContext context) => GoogleFonts.inter(
-        textStyle: Theme.of(context).textTheme.titleMedium,
-        fontWeight: FontWeight.w600,
-        letterSpacing: -0.3,
-      );
+  static TextStyle sectionTitle(BuildContext context) {
+    return GoogleFonts.urbanist(
+      color: Theme.of(context).colorScheme.onSurface,
+      fontSize: 18,
+      fontWeight: FontWeight.w600,
+    );
+  }
 
   // Títulos de elementos (grupos, canciones)
   static TextStyle itemTitle(BuildContext context) => GoogleFonts.inter(
@@ -31,11 +33,12 @@ class AppTextStyles {
       );
 
   // Descripciones y subtítulos
-  static TextStyle subtitle(BuildContext context) => GoogleFonts.inter(
-        textStyle: Theme.of(context).textTheme.bodyMedium,
-        fontWeight: FontWeight.w400,
-        letterSpacing: -0.2,
-      );
+  static TextStyle subtitle(BuildContext context) {
+    return GoogleFonts.urbanist(
+      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.8),
+      fontSize: 14,
+    );
+  }
 
   // Texto de botones y acciones
   static TextStyle buttonText(BuildContext context) => GoogleFonts.inter(

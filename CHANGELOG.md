@@ -92,8 +92,14 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 - 🔊 Sonido de click optimizado (WAV 2kHz 50ms)
 
 ### Mejoras
+- 🎨 Unificación total de colores usando onSurface
+- 🚫 Eliminación de onPrimary en componentes interactivos
+- 🌗 Contraste garantizado en todos los estados UI
 - 🖱️ Menús persistentes que requieren gesto explícito para cerrar
-- 🎨 Feedback visual en botones de metrónomo (color rojo al activar)
+- 🎨 Unificación de colores de texto: 
+  - Negro puro para temas claro/rosa 
+  - Blanco puro para tema oscuro
+  - Eliminación de opacidades variables
 - ⚡ Precarga de assets de audio para mejor rendimiento
 
 ### Correcciones

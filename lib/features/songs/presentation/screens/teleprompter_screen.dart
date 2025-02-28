@@ -177,7 +177,9 @@ class _TeleprompterScreenState extends State<TeleprompterScreen> {
               top: 0,
               right: 0,
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
+                duration: MediaQuery.of(context).disableAnimations
+                    ? Duration.zero
+                    : const Duration(milliseconds: 500),
                 width: _isPlaylistVisible ? 300 : 0,
                 height: MediaQuery.of(context).size.height - 150,
                 child: Card(
@@ -278,6 +280,10 @@ class _TeleprompterScreenState extends State<TeleprompterScreen> {
               color: Colors.white,
             ),
             onPressed: _toggleScroll,
+            focusColor: Theme.of(context).colorScheme.primary.withOpacity(0.12),
+            hoverColor: Theme.of(context).colorScheme.primary.withOpacity(0.08),
+            splashColor:
+                Theme.of(context).colorScheme.primary.withOpacity(0.20),
           ),
           Row(
             mainAxisSize: MainAxisSize.min,

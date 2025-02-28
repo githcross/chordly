@@ -716,11 +716,11 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
                           title,
                           style: Theme.of(context)
                               .textTheme
-                              .titleMedium
+                              .bodyLarge
                               ?.copyWith(
                                 fontWeight: FontWeight.w600,
                                 letterSpacing: 0.2,
-                                color: Theme.of(context).colorScheme.primary,
+                                color: Theme.of(context).colorScheme.onSurface,
                               ),
                         ),
                       ),
@@ -753,7 +753,10 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
                   subtitle: Text(
                     '$author - $tempo BPM',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.secondary,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withOpacity(0.8),
                         ),
                   ),
                   onTap: () {
