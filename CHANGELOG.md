@@ -111,4 +111,31 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 ### Técnicas
 - 📱 Prioridad de hilo `THREAD_PRIORITY_URGENT_AUDIO` en Android
 - 🧹 Limpieza de listeners y timers no utilizados
-- 📦 Actualización a `audioplayers: ^5.2.1` 
+- 📦 Actualización a `audioplayers: ^5.2.1`
+
+## [Unreleased] - 2024-02-21
+
+### Added
+- Sección detallada de información de canciones con:
+  - Datos musicales (BPM, tonalidad, duración)
+  - Historial de colaboradores con chips de usuarios
+  - Etiquetas con visualización en formato chip
+  - Referencias multimedia y notas de video
+  - Metadatos de creación y última modificación
+
+### Changed
+- Mejorada la accesibilidad cumpliendo Apple HIG:
+  - Contraste de colores 4.5:1
+  - Tamaños de texto dinámicos
+  - Semántica para screen readers
+  - Botones con tamaño mínimo 44x44 puntos
+
+### Fixed
+- Error de interpolación en visualización de BPM
+- Manejo de valores nulos en nombres de colaboradores
+- Formato consistente de fechas (dd MMM y • HH:mm)
+- Eliminación de botones de navegación redundantes
+
+### Removed
+- Botones flotantes de navegación lateral en SongDetailsScreen
+- Componente _NavigationButton obsoleto 

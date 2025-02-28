@@ -163,7 +163,8 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
         throw Exception('El BPM debe estar entre 20 y 300');
       }
 
-      final newLyrics = _lyricsController.text;
+      final newLyrics = _lyricsController.text.trim();
+      final originalLyrics = _songData['lyrics'] as String? ?? '';
 
       // Convertir a formato top usando LyricDocument
       final lyricDoc = LyricDocument.fromInlineText(newLyrics);
@@ -204,11 +205,20 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
         updatedSongData['duration'] = FieldValue.delete();
       }
 
-      // Agregar colaboradores si no es el creador original
-      final isOriginalCreator = _songData['creatorUserId'] == currentUser.uid;
-      if (!isOriginalCreator) {
+      // Obtener creador usando 'creatorUserId' o 'createdBy' como fallback
+      final creatorUserId = _songData['creatorUserId'] as String? ??
+          _songData['createdBy'] as String?;
+
+      if (newLyrics != originalLyrics &&
+          creatorUserId != null &&
+          currentUser.uid != creatorUserId) {
         updatedSongData['collaborators'] =
             FieldValue.arrayUnion([currentUser.uid]);
+
+        // Crear campo si no existe
+        if (!_songData.containsKey('collaborators')) {
+          updatedSongData['collaborators'] = [currentUser.uid];
+        }
       }
 
       // Actualizar Firestore
@@ -1072,12 +1082,21 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
         'duration': _durationController.text.trim(),
         'status': _status,
         'updatedAt': FieldValue.serverTimestamp(),
+        'lastUpdatedBy': ref.read(authProvider).value!.uid,
       };
 
       if (videoUrl.isNotEmpty) {
         updateData['videoReference'] = {'url': videoUrl, 'notes': videoNotes};
       } else {
         updateData['videoReference'] = FieldValue.delete();
+      }
+
+      final currentUser = ref.read(authProvider).value!;
+      final creatorUserId = _songData['creatorUserId'] as String? ??
+          _songData['createdBy'] as String?;
+
+      if (creatorUserId != null && currentUser.uid != creatorUserId) {
+        updateData['collaborators'] = FieldValue.arrayUnion([currentUser.uid]);
       }
 
       await songRef.update(updateData);

@@ -169,10 +169,13 @@ class _AddSongScreenState extends ConsumerState<AddSongScreen> {
         'duration': _durationController.text.trim(),
         'status': _status,
         'createdBy': currentUser.uid,
+        'creatorUserId': currentUser.uid,
+        'lastUpdatedBy': currentUser.uid,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
         'groupId': widget.groupId,
         'isActive': true,
+        'collaborators': [currentUser.uid],
       };
 
       // Agregar video de referencia si hay URL
@@ -272,6 +275,16 @@ class _AddSongScreenState extends ConsumerState<AddSongScreen> {
     return null;
   }
 
+  String? _validateTempo(String? value) {
+    if (value == null || value.isEmpty) return 'El BPM es obligatorio';
+
+    final tempo = int.tryParse(value);
+    if (tempo == null) return 'Debe ser un número válido';
+    if (tempo < 20 || tempo > 300) return 'El BPM debe estar entre 20 y 300';
+
+    return null;
+  }
+
   @override
   void dispose() {
     _titleFocus.dispose();
@@ -335,18 +348,170 @@ class _AddSongScreenState extends ConsumerState<AddSongScreen> {
     );
   }
 
+  void _openFullScreenEditor() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.9,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            _buildFullScreenHeader(),
+            Expanded(
+              child: LyricsInputField(
+                controller: _lyricsController,
+                isFullScreen: true,
+                onChordSelected: _insertChord,
+              ),
+            ),
+            _buildEditorTools(),
+          ],
+        ),
+      ),
+    ).then((_) => setState(() {}));
+  }
+
+  Widget _buildFullScreenHeader() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            'Editor Completo',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEditorTools() {
+    final basicSections = [
+      {'name': 'Intro', 'emoji': '🎵', 'color': Colors.blue},
+      {'name': 'Verse', 'emoji': '📝', 'color': Colors.green},
+      {'name': 'Pre-Chorus', 'emoji': '🚀', 'color': Colors.purple},
+      {'name': 'Chorus', 'emoji': '🎶', 'color': Colors.orange},
+      {'name': 'Bridge', 'emoji': '🌉', 'color': Colors.purple},
+      {'name': 'Outro', 'emoji': '🎸', 'color': Colors.brown},
+    ];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          ...basicSections.map((section) => _buildToolButton(
+                section['name'] as String,
+                section['emoji'] as String,
+                section['color'] as Color,
+              )),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildToolButton(String section, String emoji, Color color) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color.withOpacity(0.1),
+          foregroundColor: color,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+        ),
+        icon: Text(emoji),
+        label: Text(section),
+        onPressed: () => _insertSectionTag(section),
+      ),
+    );
+  }
+
+  void _insertSectionTag(String section) {
+    final text = '\n[$section]\n';
+    final cursorPos = _lyricsController.selection.base.offset;
+    _lyricsController.text = _lyricsController.text.replaceRange(
+      cursorPos,
+      cursorPos,
+      text,
+    );
+    _lyricsController.selection = TextSelection.collapsed(
+      offset: cursorPos + text.length,
+    );
+  }
+
+  void _insertChord(String chord) {
+    final cursorPos = _lyricsController.selection.base.offset;
+    final newText = _lyricsController.text.replaceRange(
+      cursorPos,
+      cursorPos,
+      '($chord)',
+    );
+    _lyricsController.text = newText;
+    _lyricsController.selection = TextSelection.fromPosition(
+      TextPosition(offset: cursorPos + chord.length + 2),
+    );
+  }
+
+  Widget _buildTagChips() {
+    return Wrap(
+      spacing: 8,
+      children: _availableTags.map((tag) => _buildTagChip(tag)).toList(),
+    );
+  }
+
+  Widget _buildTagChip(String tag) {
+    final isSelected = _selectedTags.contains(tag);
+    return InputChip(
+      label: Text(tag),
+      selected: isSelected,
+      onSelected: (selected) => setState(
+          () => selected ? _selectedTags.add(tag) : _selectedTags.remove(tag)),
+      selectedColor: Theme.of(context).colorScheme.primary.withOpacity(0.15),
+      checkmarkColor: Theme.of(context).colorScheme.primary,
+    );
+  }
+
+  void _showAddTagDialog() {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Nuevo Tag'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            labelText: 'Nombre del tag',
+            hintText: 'Ej: Rock, Balada, Navidad',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (controller.text.isNotEmpty) {
+                _addNewTag(controller.text);
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('Agregar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    if (_isLyricsFullScreen) {
-      return _buildLyricsEditor();
-    }
-
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -359,246 +524,328 @@ class _AddSongScreenState extends ConsumerState<AddSongScreen> {
             icon: const Icon(Icons.save_outlined),
             tooltip: 'Guardar',
           ),
-          const SizedBox(width: 8),
         ],
       ),
-      body: _error != null
-          ? Center(child: Text('Error: $_error'))
-          : Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.all(5),
-                children: [
-                  TextFormField(
-                    controller: _titleController,
-                    focusNode: _titleFocus,
-                    decoration: const InputDecoration(
-                      labelText: 'Título *',
-                      border: OutlineInputBorder(),
-                    ),
-                    textInputAction: TextInputAction.next,
-                    onFieldSubmitted: (_) {
-                      FocusScope.of(context).nextFocus();
-                    },
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'El título es obligatorio';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _authorController,
-                    decoration: const InputDecoration(
-                      labelText: 'Autor *',
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'El autor es obligatorio';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 20),
-                  _buildLyricsEditor(),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    value: _selectedKey,
-                    decoration: const InputDecoration(
-                      labelText: 'Clave Base *',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: _availableNotes.map((note) {
-                      return DropdownMenuItem(
-                        value: note,
-                        child: Text(note),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      setState(() => _selectedKey = value);
-                    },
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'La clave base es obligatoria';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      ..._availableTags.map((tag) {
-                        final isSelected = _selectedTags.contains(tag);
-                        return FilterChip(
-                          label: Text(tag),
-                          selected: isSelected,
-                          onSelected: (selected) {
-                            setState(() {
-                              if (selected) {
-                                _selectedTags.add(tag);
-                              } else {
-                                _selectedTags.remove(tag);
-                              }
-                            });
-                          },
-                        );
-                      }),
-                      ActionChip(
-                        label: const Text('+ Nuevo Tag'),
-                        onPressed: () {
-                          showDialog(
-                            context: context,
-                            builder: (context) {
-                              final controller = TextEditingController();
-                              return AlertDialog(
-                                title: const Text('Nuevo Tag'),
-                                content: TextField(
-                                  controller: controller,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Nombre del tag',
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(child: Text('Error: $_error'))
+              : Form(
+                  key: _formKey,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Sección de Información Básica
+                        Card(
+                          elevation: 2,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              children: [
+                                Text(
+                                  'Información Básica',
+                                  style: AppTextStyles.sectionTitle(context),
+                                ),
+                                const SizedBox(height: 16),
+                                LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    return Wrap(
+                                      spacing: 16,
+                                      runSpacing: 16,
+                                      children: [
+                                        SizedBox(
+                                          width: constraints.maxWidth > 600
+                                              ? 300
+                                              : double.infinity,
+                                          child: TextFormField(
+                                            controller: _titleController,
+                                            decoration: const InputDecoration(
+                                              labelText: 'Título',
+                                              prefixIcon: Icon(Icons.title),
+                                            ),
+                                            validator: (value) {
+                                              if (value == null ||
+                                                  value.isEmpty) {
+                                                return 'El título es obligatorio';
+                                              }
+                                              return null;
+                                            },
+                                          ),
+                                        ),
+                                        SizedBox(
+                                          width: constraints.maxWidth > 600
+                                              ? 300
+                                              : double.infinity,
+                                          child: TextFormField(
+                                            controller: _authorController,
+                                            decoration: const InputDecoration(
+                                              labelText: 'Artista/Grupo',
+                                              prefixIcon: Icon(Icons.person),
+                                            ),
+                                            validator: (value) {
+                                              if (value == null ||
+                                                  value.isEmpty) {
+                                                return 'El artista es obligatorio';
+                                              }
+                                              return null;
+                                            },
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Sección de Configuración Musical
+                        Card(
+                          elevation: 2,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '⚙️ Configuración Musical',
+                                  style: AppTextStyles.sectionTitle(context),
+                                ),
+                                const SizedBox(height: 16),
+                                Wrap(
+                                  spacing: 16,
+                                  children: [
+                                    SizedBox(
+                                      width: 120,
+                                      child: TextFormField(
+                                        controller: _tempoController,
+                                        decoration: const InputDecoration(
+                                          labelText: 'BPM',
+                                          prefixIcon: Icon(Icons.speed),
+                                        ),
+                                        keyboardType: TextInputType.number,
+                                        validator: _validateTempo,
+                                      ),
+                                    ),
+                                    SizedBox(
+                                      width: 150,
+                                      child: DropdownButtonFormField<String>(
+                                        value: _selectedKey,
+                                        decoration: const InputDecoration(
+                                          labelText: 'Clave Base',
+                                          prefixIcon: Icon(Icons.music_note),
+                                        ),
+                                        items: _availableNotes.map((note) {
+                                          return DropdownMenuItem(
+                                            value: note,
+                                            child: Text(note),
+                                          );
+                                        }).toList(),
+                                        onChanged: (value) {
+                                          setState(() => _selectedKey = value);
+                                        },
+                                        validator: (value) {
+                                          if (value == null || value.isEmpty) {
+                                            return 'Selecciona una clave';
+                                          }
+                                          return null;
+                                        },
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Sección de Letra
+                        Card(
+                          elevation: 2,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(
+                                      '🎼 Letra y Acordes',
+                                      style:
+                                          AppTextStyles.sectionTitle(context),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.expand),
+                                      onPressed: _openFullScreenEditor,
+                                      tooltip: 'Editar en pantalla completa',
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                                Container(
+                                  height: 250,
+                                  decoration: BoxDecoration(
+                                    border:
+                                        Border.all(color: Colors.grey.shade300),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: InkWell(
+                                    onTap: _openFullScreenEditor,
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(16),
+                                      child: Text(
+                                        _lyricsController.text.isEmpty
+                                            ? 'Toca para comenzar a editar la letra...'
+                                            : _lyricsController.text,
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.grey.shade800,
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context),
-                                    child: const Text('Cancelar'),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Sección de Tags
+                        Card(
+                          elevation: 2,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text('🏷️ Tags',
+                                        style: AppTextStyles.sectionTitle(
+                                            context)),
+                                    const SizedBox(width: 10),
+                                    IconButton(
+                                      icon: const Icon(Icons.add_circle,
+                                          size: 24),
+                                      onPressed: _showAddTagDialog,
+                                      color:
+                                          Theme.of(context).colorScheme.primary,
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                _buildTagChips(),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+
+                        // Sección de Video
+                        Card(
+                          elevation: 2,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '🎥 Referencia de Video',
+                                  style: AppTextStyles.sectionTitle(context),
+                                ),
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  controller: _videoUrlController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'URL del Video',
+                                    prefixIcon: Icon(Icons.link),
                                   ),
-                                  FilledButton(
-                                    onPressed: () {
-                                      if (controller.text.isNotEmpty) {
-                                        _addNewTag(controller.text);
-                                        Navigator.pop(context);
+                                  validator: (value) {
+                                    if (value != null && value.isNotEmpty) {
+                                      final videoId =
+                                          YoutubePlayer.convertUrlToId(value);
+                                      if (videoId == null) {
+                                        return 'URL de YouTube inválida';
                                       }
-                                    },
-                                    child: const Text('Agregar'),
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  controller: _videoNotesController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Notas sobre el video',
+                                    hintText:
+                                        'Agrega notas sobre la versión del video',
+                                    prefixIcon: Icon(Icons.note),
                                   ),
-                                ],
-                              );
-                            },
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _tempoController,
-                          decoration: const InputDecoration(
-                            labelText: 'Tempo (BPM)',
-                            border: OutlineInputBorder(),
+                                  maxLines: 2,
+                                ),
+                              ],
+                            ),
                           ),
-                          keyboardType: TextInputType.number,
                         ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _durationController,
-                          decoration: const InputDecoration(
-                            labelText: 'Duración (mm:ss)',
-                            border: OutlineInputBorder(),
-                            hintText: '3:45',
+
+                        const SizedBox(height: 24),
+
+                        // Sección de Estado y Duración
+                        Card(
+                          elevation: 2,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              children: [
+                                TextFormField(
+                                  controller: _durationController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Duración (mm:ss)',
+                                    prefixIcon: Icon(Icons.timer),
+                                  ),
+                                  keyboardType: TextInputType.datetime,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                    LengthLimitingTextInputFormatter(4),
+                                    _TimeInputFormatter(),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                                SwitchListTile(
+                                  title: Text(_status == 'publicado'
+                                      ? 'Publicado'
+                                      : 'Borrador'),
+                                  subtitle: const Text('Estado de la canción'),
+                                  value: _status == 'publicado',
+                                  onChanged: (value) {
+                                    setState(() => _status =
+                                        value ? 'publicado' : 'borrador');
+                                  },
+                                  secondary: Icon(
+                                    _status == 'publicado'
+                                        ? Icons.public
+                                        : Icons.drafts,
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                          keyboardType: TextInputType.datetime,
-                          validator: _validateDuration,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(
-                                RegExp(r'[0-9:]')),
-                            LengthLimitingTextInputFormatter(5),
-                            // Formateador personalizado para ayudar con el formato
-                            TextInputFormatter.withFunction(
-                                (oldValue, newValue) {
-                              final text = newValue.text;
-                              if (text.isEmpty) return newValue;
-
-                              // Si ya tiene los dos puntos, solo permitir números después
-                              if (text.contains(':')) {
-                                if (text.length > 5) return oldValue;
-                                return newValue;
-                              }
-
-                              // Agregar los dos puntos automáticamente después de los minutos
-                              if (text.length == 2) {
-                                return TextEditingValue(
-                                  text: '$text:',
-                                  selection: TextSelection.collapsed(
-                                      offset: text.length + 1),
-                                );
-                              }
-
-                              // No permitir más de 2 dígitos antes de los dos puntos
-                              if (text.length > 2 && !text.contains(':')) {
-                                return oldValue;
-                              }
-
-                              return newValue;
-                            }),
-                          ],
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(
-                        value: 'borrador',
-                        label: Text('Borrador'),
-                      ),
-                      ButtonSegment(
-                        value: 'publicado',
-                        label: Text('Publicado'),
-                      ),
-                    ],
-                    selected: {_status},
-                    onSelectionChanged: (Set<String> newSelection) {
-                      setState(() => _status = newSelection.first);
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Video de referencia',
-                    style: AppTextStyles.sectionTitle(context),
-                  ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: _videoUrlController,
-                    decoration: const InputDecoration(
-                      labelText: 'URL del video',
-                      hintText: 'Ingresa la URL del video de YouTube',
-                      prefixIcon: Icon(Icons.video_library),
-                      border: OutlineInputBorder(),
+                      ],
                     ),
-                    validator: (value) {
-                      if (value != null && value.isNotEmpty) {
-                        final videoId = YoutubePlayer.convertUrlToId(value);
-                        if (videoId == null) {
-                          return 'URL de YouTube inválida';
-                        }
-                      }
-                      return null;
-                    },
                   ),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    controller: _videoNotesController,
-                    decoration: const InputDecoration(
-                      labelText: 'Notas sobre el video',
-                      hintText: 'Agrega notas sobre la versión del video',
-                      prefixIcon: Icon(Icons.note),
-                      border: OutlineInputBorder(),
-                    ),
-                    maxLines: 2,
-                  ),
-                ],
-              ),
-            ),
+                ),
     );
   }
 
@@ -611,6 +858,26 @@ class _AddSongScreenState extends ConsumerState<AddSongScreen> {
           isEditing: false,
         ),
       ),
+    );
+  }
+}
+
+class _TimeInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final text = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (text.length > 4) return oldValue;
+
+    String formatted = text;
+    if (text.length > 2) {
+      formatted = '${text.substring(0, 2)}:${text.substring(2)}';
+    }
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
     );
   }
 }

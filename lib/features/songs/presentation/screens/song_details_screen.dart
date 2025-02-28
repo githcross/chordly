@@ -491,41 +491,6 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
                                 child: _buildLandscapeControls(),
                               ),
                             _buildVideoPlayer(),
-                            if (widget.playlistSongs != null &&
-                                widget.playlistSongs!.length > 1)
-                              Positioned(
-                                left: 16,
-                                bottom:
-                                    MediaQuery.of(context).padding.bottom + 16,
-                                child: _NavigationButton(
-                                  icon: Icons.chevron_left,
-                                  onPressed: _currentIndex > 0
-                                      ? () => _pageController.previousPage(
-                                            duration: const Duration(
-                                                milliseconds: 300),
-                                            curve: Curves.easeInOut,
-                                          )
-                                      : null,
-                                ),
-                              ),
-                            if (widget.playlistSongs != null &&
-                                widget.playlistSongs!.length > 1)
-                              Positioned(
-                                right: 16,
-                                bottom:
-                                    MediaQuery.of(context).padding.bottom + 16,
-                                child: _NavigationButton(
-                                  icon: Icons.chevron_right,
-                                  onPressed: _currentIndex <
-                                          widget.playlistSongs!.length - 1
-                                      ? () => _pageController.nextPage(
-                                            duration: const Duration(
-                                                milliseconds: 300),
-                                            curve: Curves.easeInOut,
-                                          )
-                                      : null,
-                                ),
-                              ),
                           ],
                         ),
                       );
@@ -981,51 +946,27 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              _buildInfoRow('Creada por:', songData['author'] ?? 'Desconocido'),
               _buildInfoRow(
-                context,
-                Icons.person,
-                'Autor',
-                songData['author'] ?? 'Desconocido',
-              ),
-              const SizedBox(height: 16),
+                  'Fecha creación:',
+                  songData['createdAt'] != null
+                      ? DateFormat('dd/MM/yyyy HH:mm')
+                          .format(songData['createdAt'].toDate())
+                      : 'No disponible'),
+              _buildInfoRow('Última edición por:',
+                  songData['lastUpdatedBy'] ?? 'Desconocido'),
               _buildInfoRow(
-                context,
-                Icons.timer,
-                'Duración',
-                songData['duration'] ?? 'No especificada',
-              ),
+                  'Fecha última edición:',
+                  songData['updatedAt'] != null
+                      ? DateFormat('dd/MM/yyyy HH:mm')
+                          .format(songData['updatedAt'].toDate())
+                      : 'No disponible'),
               const SizedBox(height: 16),
-              _buildCreatorInfo(songData['createdBy']),
-              const SizedBox(height: 16),
-              _buildDatesInfo(songData),
-              const SizedBox(height: 16),
-              _buildInfoRow(
-                context,
-                Icons.info_outline,
-                'Estado',
-                songData['status'] == 'publicado' ? 'Publicado' : 'Borrador',
-              ),
-              if (songData['videoReference'] != null) ...[
-                const SizedBox(height: 16),
-                _buildInfoRow(
-                  context,
-                  Icons.video_library,
-                  'Video de referencia',
-                  songData['videoReference']['notes'] ?? 'Sin notas',
-                ),
-              ],
-              if (songData['collaborators'] != null &&
-                  (songData['collaborators'] as List).isNotEmpty) ...[
-                const SizedBox(height: 16),
-                _buildCollaboratorsInfo(
-                  List<String>.from(songData['collaborators'] as List),
-                ),
-              ],
-              if (songData['tags'] != null &&
-                  (songData['tags'] as List).isNotEmpty) ...[
-                const SizedBox(height: 16),
-                _buildTagsRow(context, List<String>.from(songData['tags'])),
-              ],
+              const Text('Colaboradores:',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              ...?songData['collaborators']
+                  ?.where((c) => c != null)
+                  .map((c) => Text('• $c')),
             ],
           ),
         ),
@@ -1039,41 +980,33 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     );
   }
 
-  Widget _buildInfoRow(
-      BuildContext context, IconData icon, String label, dynamic value) {
-    if (label == 'BPM' && value is int && value > 0) {
-      return Row(
-        children: [
-          Icon(icon, color: Theme.of(context).colorScheme.primary),
-          const SizedBox(width: 8),
-          Text(
-            '$label: ',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+  Widget _buildInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: RichText(
+        text: TextSpan(
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface,
+            fontSize: Theme.of(context).textTheme.bodyMedium?.fontSize,
           ),
-          _buildBpmButton(context, value),
-        ],
-      );
-    }
-    return Row(
-      children: [
-        Icon(icon, color: Theme.of(context).colorScheme.primary),
-        const SizedBox(width: 8),
-        Text(
-          '$label: ',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          children: [
+            TextSpan(
+              text: '$label ',
+              style: TextStyle(
                 fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.8),
               ),
+            ),
+            TextSpan(
+              text: value,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
+                height: 1.5,
+              ),
+            ),
+          ],
         ),
-        Expanded(
-          child: Text(
-            value.toString(),
-            style: Theme.of(context).textTheme.bodyMedium,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
+      ),
     );
   }
 
@@ -1179,7 +1112,6 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
 
   Widget _buildBpmControls() {
     return StatefulBuilder(
-      // 4. StatefulBuilder para actualización local
       builder: (context, setLocalState) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(
@@ -1191,7 +1123,7 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
               color: Theme.of(context).colorScheme.primary,
               onPressed: () {
                 _adjustBpm(-5);
-                setLocalState(() {}); // 5. Actualización del StatefulBuilder
+                setLocalState(() {});
               },
             ),
             GestureDetector(
@@ -1218,7 +1150,7 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
               color: Theme.of(context).colorScheme.primary,
               onPressed: () {
                 _adjustBpm(5);
-                setLocalState(() {}); // 5. Actualización del StatefulBuilder
+                setLocalState(() {});
               },
             ),
           ],
@@ -1310,12 +1242,7 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
       future: _getCreatorName(creatorId),
       builder: (context, snapshot) {
         final creatorName = snapshot.data ?? 'Cargando...';
-        return _buildInfoRow(
-          context,
-          Icons.person_outline,
-          'Creado por',
-          creatorName,
-        );
+        return _buildInfoRow('Creado por', creatorName);
       },
     );
   }
@@ -1337,12 +1264,7 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
       future: _getCollaboratorNames(collaboratorIds),
       builder: (context, snapshot) {
         final collaboratorNames = snapshot.data?.join(', ') ?? 'Cargando...';
-        return _buildInfoRow(
-          context,
-          Icons.group,
-          'Colaboradores',
-          collaboratorNames,
-        );
+        return _buildInfoRow('Colaboradores', collaboratorNames);
       },
     );
   }
@@ -1854,6 +1776,17 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
             onTap: () => _navigateToTeleprompter(),
           ),
         ),
+        PopupMenuItem(
+          value: 'info',
+          child: ListTile(
+            title: const Text('Información de la canción'),
+            leading: const Icon(Icons.info_outline),
+            onTap: () {
+              Navigator.pop(context);
+              _showSongInfoDialog();
+            },
+          ),
+        ),
       ],
     );
   }
@@ -2079,32 +2012,168 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     }
   }
 
-  void _showSettingsMenu(BuildContext context) {
-    showModalBottomSheet(
+  void _showSongInfoDialog() async {
+    final usersRef = FirebaseFirestore.instance.collection('users');
+    final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
+
+    // Obtener nombres de usuarios
+    final creatorName = await _getUserName(
+        _songData['creatorUserId'] ?? _songData['createdBy']);
+    final lastEditorName = await _getUserName(_songData['lastUpdatedBy']);
+
+    // Obtener colaboradores
+    final collaborators = await Future.wait(
+        (_songData['collaborators'] as List<dynamic>? ?? [])
+            .map((uid) => _getUserName(uid.toString()))
+            .toList());
+
+    showDialog(
       context: context,
-      builder: (context) => Container(
-        // ... contenido existente ...
-        child: Column(
-          children: [
-            ListTile(
-              title: const Text('Editar Canción'),
-              onTap: () {
-                Navigator.pop(context); // Cerrar menú
-                _navigateToEditScreen();
-              },
-            ),
-            ListTile(
-              title: const Text('Teleprompter'),
-              onTap: () {
-                Navigator.pop(context);
-                _navigateToTeleprompter();
-              },
-            ),
-          ],
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Información detallada',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: Theme.of(context).colorScheme.onSurface,
+                fontWeight: FontWeight.w600,
+              ),
         ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Sección: Información Básica
+              _buildInfoSectionTitle('Información básica'),
+              _buildInfoRow('Título', _songData['title'] ?? 'Sin título'),
+              _buildInfoRow('Autor', _songData['author'] ?? 'Desconocido'),
+              _buildInfoRow(
+                  'Estado',
+                  _songData['status'] == 'publicado'
+                      ? 'Publicado'
+                      : 'Borrador ⚫'),
+
+              const SizedBox(height: 12),
+
+              // Sección: Datos Musicales
+              _buildInfoSectionTitle('Datos musicales'),
+              _buildInfoRow('Duración',
+                  _songData['duration']?.toString().padLeft(4, '0') ?? '00:00'),
+              _buildInfoRow(
+                  'BPM', '${_songData['tempo'] ?? _songData['bpm'] ?? '--'}'),
+              _buildInfoRow('Tonalidad base',
+                  _songData['baseKey']?.toUpperCase() ?? 'No definida'),
+
+              const SizedBox(height: 12),
+
+              // Sección: Multimedia
+              if (_songData['videoReference'] != null) ...[
+                _buildInfoSectionTitle('Referencia multimedia'),
+                if (_songData['videoReference']?['url'] != null)
+                  _buildInfoRow('Video', _songData['videoReference']?['url']),
+                if (_songData['videoReference']?['notes'] != null)
+                  _buildInfoRow(
+                      'Notas del video', _songData['videoReference']?['notes']),
+              ],
+
+              const SizedBox(height: 12),
+
+              // Sección: Metadatos
+              _buildInfoSectionTitle('Metadatos'),
+              _buildInfoRow('Creada por', creatorName ?? 'Desconocido'),
+              _buildInfoRow(
+                  'Fecha creación', _formattedDate(_songData['createdAt'])),
+              _buildInfoRow(
+                  'Última edición por', lastEditorName ?? 'Desconocido'),
+              _buildInfoRow('Fecha última edición',
+                  _formattedDate(_songData['updatedAt'])),
+
+              const SizedBox(height: 12),
+
+              // Sección: Colaboración
+              _buildInfoSectionTitle('Colaboración'),
+              if ((_songData['collaborators'] as List?)?.isNotEmpty ??
+                  false) ...[
+                _buildInfoRow('Total colaboradores',
+                    '${_songData['collaborators']?.length ?? 0}'),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: (_songData['collaborators'] as List)
+                      .map((uid) => _buildUserChip(uid))
+                      .toList(),
+                ),
+              ] else
+                _buildInfoRow(
+                    'Colaboradores', 'No hay colaboradores registrados'),
+
+              const SizedBox(height: 12),
+
+              // Sección: Tags
+              _buildInfoSectionTitle('Etiquetas'),
+              if ((_songData['tags'] as List?)?.isNotEmpty ?? false)
+                Wrap(
+                  spacing: 8,
+                  children: (_songData['tags'] as List)
+                      .map((tag) => Chip(
+                            label: Text(tag),
+                            visualDensity: VisualDensity.compact,
+                          ))
+                      .toList(),
+                )
+              else
+                _buildInfoRow('Etiquetas', 'Sin etiquetas asignadas'),
+            ],
+          ),
+        ),
+        actions: [
+          Semantics(
+            button: true,
+            label: 'Cerrar diálogo de información',
+            child: TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                'Cerrar',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
+
+  Future<String?> _getUserName(String? userId) async {
+    if (userId == null) return null;
+    final doc =
+        await FirebaseFirestore.instance.collection('users').doc(userId).get();
+    return doc.data()?['displayName'] ?? 'Usuario desconocido';
+  }
+
+  String _formattedDate(dynamic timestamp) => timestamp != null
+      ? DateFormat("dd MMM y • HH:mm").format((timestamp as Timestamp).toDate())
+      : 'No registrada';
+
+  Widget _buildUserChip(String userId) => FutureBuilder<String?>(
+        future: _getUserName(userId),
+        builder: (context, snapshot) => Chip(
+          avatar: const Icon(Icons.person_outline, size: 18),
+          label: Text(snapshot.data ?? 'Usuario desconocido'),
+          visualDensity: VisualDensity.compact,
+        ),
+      );
+
+  Widget _buildInfoSectionTitle(String title) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(
+          title,
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
+        ),
+      );
 }
 
 class FullScreenLyricsEditor extends StatefulWidget {
@@ -2150,39 +2219,6 @@ class FullScreenLyricsEditorState extends State<FullScreenLyricsEditor> {
         child: LyricsInputField(
           controller: _controller,
           isFullScreen: true,
-        ),
-      ),
-    );
-  }
-}
-
-class _NavigationButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback? onPressed;
-
-  const _NavigationButton({required this.icon, this.onPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface.withOpacity(0.8),
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          )
-        ],
-      ),
-      child: IconButton(
-        icon: Icon(icon, size: 28),
-        color: Theme.of(context).colorScheme.primary,
-        onPressed: onPressed,
-        style: IconButton.styleFrom(
-          padding: const EdgeInsets.all(16),
-          visualDensity: VisualDensity.compact,
         ),
       ),
     );
