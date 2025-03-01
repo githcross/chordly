@@ -4,9 +4,9 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 
 class CloudinaryService {
-  static const String cloudName = 'djocon1g7';
-  static const String apiKey = '637169452383251';
-  static const String apiSecret = 'yj-wBWP1PT-nAiBAtTzF9Q32uF4';
+  static const String cloudName = 'dxkuoxqzs';
+  static const String apiKey = '653841673249878';
+  static const String apiSecret = 'gFlewu1V8scWo_Rl1rT-CWWVyCA';
 
   static Future<String> uploadFile({
     required File file,
