@@ -8,6 +8,7 @@ import 'package:chordly/features/songs/services/song_purge_service.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:chordly/core/providers/theme_provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

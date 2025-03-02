@@ -14,8 +14,7 @@ import 'package:chordly/features/songs/presentation/delegates/song_search_delega
 import 'package:chordly/features/songs/presentation/screens/song_details_screen.dart';
 import 'package:chordly/features/songs/presentation/screens/deleted_songs_screen.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:chordly/features/groups/presentation/screens/add_video_screen.dart';
-import 'package:video_player/video_player.dart';
+import 'package:chordly/features/videos/presentation/screens/add_video_screen.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:path_provider/path_provider.dart';
@@ -24,9 +23,10 @@ import 'package:flutter/services.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'package:intl/intl.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:chordly/features/auth/providers/auth_provider.dart';
 import 'package:chordly/features/playlists/presentation/screens/create_playlist_screen.dart';
+import 'package:chordly/features/videos/presentation/screens/video_feed_screen.dart';
+import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 
 class HomeGroupScreen extends ConsumerStatefulWidget {
   final GroupModel group;
@@ -309,7 +309,7 @@ class _HomeGroupScreenState extends ConsumerState<HomeGroupScreen> {
       case 1: // Playlists
         return []; // No se necesitan acciones en la AppBar para Playlists
       case 2: // Videos
-        return []; // No se necesitan acciones en la AppBar para Videos
+        return [];
       default:
         return [];
     }
@@ -491,15 +491,12 @@ class _HomeGroupScreenState extends ConsumerState<HomeGroupScreen> {
   Future<void> _importBackup() async {
     try {
       // Seleccionar archivo
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['json'],
-      );
+      final result = await showFileSelector();
 
-      if (result == null || result.files.isEmpty) return;
+      if (result == null || result.isEmpty) return;
 
       // Leer el archivo
-      final file = File(result.files.first.path!);
+      final file = File(result.first.path!);
       final jsonString = await file.readAsString();
       final backup = jsonDecode(jsonString) as Map<String, dynamic>;
 
@@ -557,6 +554,12 @@ class _HomeGroupScreenState extends ConsumerState<HomeGroupScreen> {
         SnackBar(content: Text('Error al importar: $e')),
       );
     }
+  }
+
+  Future<List<File>?> showFileSelector() async {
+    // Implementación temporal usando el selector nativo
+    final result = await ImagePicker().pickVideo(source: ImageSource.gallery);
+    return result != null ? [File(result.path)] : null;
   }
 }
 
@@ -641,102 +644,14 @@ class _HorizontalCategoryCard extends StatelessWidget {
   }
 }
 
-class _TikTokStyleVideoList extends StatefulWidget {
+class _TikTokStyleVideoList extends StatelessWidget {
   final List<QueryDocumentSnapshot> videos;
 
   const _TikTokStyleVideoList({required this.videos});
 
   @override
-  __TikTokStyleVideoListState createState() => __TikTokStyleVideoListState();
-}
-
-class __TikTokStyleVideoListState extends State<_TikTokStyleVideoList> {
-  late PageController _pageController;
-  late List<VideoPlayerController> _controllers = [];
-  int _currentPage = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _pageController = PageController(initialPage: 0);
-    _updateControllers();
-  }
-
-  @override
-  void didUpdateWidget(covariant _TikTokStyleVideoList oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.videos != widget.videos) {
-      _updateControllers();
-    }
-  }
-
-  void _updateControllers() {
-    // Dispose old controllers
-    for (var controller in _controllers) {
-      controller.dispose();
-    }
-
-    // Initialize new controllers
-    _controllers = widget.videos.map((videoDoc) {
-      final videoUrl = videoDoc['videoUrl'] as String?;
-      if (videoUrl == null || videoUrl.isEmpty) {
-        return VideoPlayerController.networkUrl(Uri.parse('invalid_url'))
-          ..setLooping(true);
-      }
-      return VideoPlayerController.networkUrl(Uri.parse(videoUrl))
-        ..setLooping(true)
-        ..initialize().then((_) {
-          if (mounted) setState(() {});
-        }).catchError((error) {
-          print('Error initializing video: $error');
-        });
-    }).toList();
-
-    // Reset page controller
-    _currentPage = 0;
-    if (_controllers.isNotEmpty) {
-      _controllers[0].initialize().then((_) {
-        if (mounted) {
-          setState(() {});
-          _controllers[0].play();
-        }
-      });
-    }
-  }
-
-  void _handlePageChanged(int page) {
-    if (page < 0 || page >= _controllers.length) return;
-
-    // Pause previous video if valid
-    if (_currentPage < _controllers.length) {
-      final previousController = _controllers[_currentPage];
-      if (previousController.value.isInitialized &&
-          previousController.value.isPlaying) {
-        previousController.pause();
-      }
-    }
-
-    // Play new video if valid
-    _currentPage = page;
-    final currentController = _controllers[page];
-    if (currentController.value.isInitialized &&
-        !currentController.value.isPlaying) {
-      currentController.play();
-    }
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    for (var controller in _controllers) {
-      controller.dispose();
-    }
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return widget.videos.isEmpty
+    return videos.isEmpty
         ? Center(
             child: Text(
               'No hay videos disponibles',
@@ -744,30 +659,30 @@ class __TikTokStyleVideoListState extends State<_TikTokStyleVideoList> {
             ),
           )
         : PageView.builder(
-            controller: _pageController,
-            scrollDirection: Axis.vertical,
-            itemCount: widget.videos.length,
-            onPageChanged: _handlePageChanged,
+            itemCount: videos.length,
             itemBuilder: (context, index) {
-              if (index >= _controllers.length) return const SizedBox.shrink();
-
-              final videoData =
-                  widget.videos[index].data() as Map<String, dynamic>;
-              final controller = _controllers[index];
+              final videoData = videos[index].data() as Map<String, dynamic>;
 
               return Stack(
                 fit: StackFit.expand,
                 children: [
-                  if (controller.value.isInitialized &&
-                      controller.value.isBuffering)
+                  if (videoData['videoUrl'] == null ||
+                      videoData['videoUrl'].isEmpty)
                     const Center(child: CircularProgressIndicator())
-                  else if (controller.value.isInitialized)
-                    AspectRatio(
-                      aspectRatio: controller.value.aspectRatio,
-                      child: VideoPlayer(controller),
-                    )
                   else
-                    const Center(child: CircularProgressIndicator()),
+                    AspectRatio(
+                      aspectRatio: 9 / 16,
+                      child: YoutubePlayer(
+                        controller: YoutubePlayerController(
+                          initialVideoId: videoData['videoId'],
+                          flags: const YoutubePlayerFlags(
+                            autoPlay: true,
+                            mute: false,
+                            enableCaption: true,
+                          ),
+                        ),
+                      ),
+                    ),
                   _VideoOverlay(videoData: videoData),
                 ],
               );
@@ -801,8 +716,10 @@ class _VideoOverlay extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Spacer(),
+          const Icon(Icons.construction, size: 50, color: Colors.amber),
+          const SizedBox(height: 20),
           Text(
-            videoData['title'] ?? 'Sin título',
+            'Videos en Desarrollo',
             style: const TextStyle(
               color: Colors.white,
               fontSize: 18,
@@ -811,28 +728,10 @@ class _VideoOverlay extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            videoData['description'] ?? '',
+            '¡Próximamente!',
             style: const TextStyle(color: Colors.white),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              const Icon(Icons.thumb_up, color: Colors.white, size: 16),
-              const SizedBox(width: 4),
-              Text(
-                '${videoData['likes'] ?? 0}',
-                style: const TextStyle(color: Colors.white),
-              ),
-              const SizedBox(width: 16),
-              const Icon(Icons.remove_red_eye, color: Colors.white, size: 16),
-              const SizedBox(width: 4),
-              Text(
-                '${videoData['views'] ?? 0}',
-                style: const TextStyle(color: Colors.white),
-              ),
-            ],
           ),
         ],
       ),

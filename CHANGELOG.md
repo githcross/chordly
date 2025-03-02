@@ -113,29 +113,21 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 - 🧹 Limpieza de listeners y timers no utilizados
 - 📦 Actualización a `audioplayers: ^5.2.1`
 
-## [Unreleased] - 2024-02-21
-
+## [Unreleased]
 ### Added
-- Sección detallada de información de canciones con:
-  - Datos musicales (BPM, tonalidad, duración)
-  - Historial de colaboradores con chips de usuarios
-  - Etiquetas con visualización en formato chip
-  - Referencias multimedia y notas de video
-  - Metadatos de creación y última modificación
+- 🚧 Pantalla temporal de "Videos en Desarrollo" con mensaje informativo
+- 🛠️ Sistema de notificación de estado de desarrollo en vistas de video
 
 ### Changed
-- Mejorada la accesibilidad cumpliendo Apple HIG:
-  - Contraste de colores 4.5:1
-  - Tamaños de texto dinámicos
-  - Semántica para screen readers
-  - Botones con tamaño mínimo 44x44 puntos
+- ♻️ Actualización de `youtube_player_flutter` a v13.1.0
+- 🎥 Mejoras en la configuración del reproductor de YouTube Shorts
+- 🖼️ Rediseño del overlay de información de videos
 
 ### Fixed
-- Error de interpolación en visualización de BPM
-- Manejo de valores nulos en nombres de colaboradores
-- Formato consistente de fechas (dd MMM y • HH:mm)
-- Eliminación de botones de navegación redundantes
+- 🐛 Posicionamiento correcto de elementos en Stack
+- 🔧 Manejo de URLs de YouTube Shorts con diferentes formatos
+- 🚑 Corrección de errores de referencia a controladores
 
 ### Removed
-- Botones flotantes de navegación lateral en SongDetailsScreen
-- Componente _NavigationButton obsoleto 
+- 🔇 Eliminación temporal del reproductor de videos funcional
+- 🗑️ Código obsoleto de la implementación anterior 

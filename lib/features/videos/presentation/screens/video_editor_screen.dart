@@ -2,6 +2,7 @@
 void initState() {
   super.initState();
   _videoService = ref.read(videoServiceProvider);
+  _descriptionController = TextEditingController();
   _controller = VideoEditorController.file(
     widget.videoFile,
     minDuration: const Duration(seconds: 1),

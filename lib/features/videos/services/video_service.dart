@@ -1,19 +1,25 @@
-Future<void> saveVideoData({
-  required String groupId,
-  required String videoUrl,
-  required String publicId,
-  required String description,
-}) async {
-  await FirebaseFirestore.instance
-      .collection('groups')
-      .doc(groupId)
-      .collection('videos')
-      .add({
-    'videoUrl': videoUrl,
-    'publicId': publicId,
-    'description': description,
-    'createdAt': FieldValue.serverTimestamp(),
-    'views': 0,
-    'likes': 0,
-  });
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
+
+class VideoService {
+  Future<void> saveYoutubeVideo({
+    required String groupId,
+    required String videoId,
+    required String description,
+    required String originalUrl,
+  }) async {
+    await FirebaseFirestore.instance
+        .collection('groups')
+        .doc(groupId)
+        .collection('videos')
+        .add({
+      'videoId': videoId,
+      'originalUrl': originalUrl,
+      'description': description,
+      'type': 'youtube',
+      'likes': 0,
+      'views': 0,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
 }

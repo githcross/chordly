@@ -18,9 +18,9 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:file_picker/file_picker.dart';
 import 'dart:convert';
 import 'package:chordly/features/songs/presentation/screens/edit_song_screen.dart';
+import 'package:image_picker/image_picker.dart';
 
 class ListSongsScreen extends ConsumerStatefulWidget {
   final GroupModel group;
@@ -860,15 +860,12 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
   Future<void> _importBackup() async {
     try {
       // Seleccionar archivo
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['json'],
-      );
+      final result = await showFileSelector();
 
-      if (result == null || result.files.isEmpty) return;
+      if (result == null || result.isEmpty) return;
 
       // Leer el archivo
-      final file = File(result.files.first.path!);
+      final file = File(result.first.path!);
       final jsonString = await file.readAsString();
       final backup = jsonDecode(jsonString) as Map<String, dynamic>;
 
@@ -969,5 +966,10 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
         : query.orderBy('title', descending: true);
 
     return query;
+  }
+
+  Future<List<File>?> showFileSelector() async {
+    final result = await ImagePicker().pickVideo(source: ImageSource.gallery);
+    return result != null ? [File(result.path)] : null;
   }
 }

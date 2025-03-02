@@ -1,11 +1,12 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:video_compress/video_compress.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:chordly/core/services/cloudinary_service.dart';
+import 'package:youtube_player_flutter/youtube_player_flutter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class VideoService {
   static const String cloudName = 'djocon1g7';
@@ -65,5 +66,27 @@ class VideoService {
         sortedParams.map((key) => '$key=${params[key]}').join('&');
 
     return sha1.convert(utf8.encode('$paramString$apiSecret')).toString();
+  }
+
+  static Future<void> saveYoutubeVideo({
+    required String originalUrl,
+    required String description,
+    required String groupId,
+  }) async {
+    final videoId = YoutubePlayer.convertUrlToId(originalUrl) ?? '';
+
+    await FirebaseFirestore.instance
+        .collection('groups')
+        .doc(groupId)
+        .collection('videos')
+        .add({
+      'videoId': videoId,
+      'originalUrl': 'https://youtube.com/shorts/$videoId', // Formato corto
+      'description': description,
+      'type': 'youtube',
+      'likes': 0,
+      'views': 0,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
   }
 }
