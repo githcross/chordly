@@ -130,4 +130,18 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ### Removed
 - 🔇 Eliminación temporal del reproductor de videos funcional
-- 🗑️ Código obsoleto de la implementación anterior 
+- 🗑️ Código obsoleto de la implementación anterior
+
+## [2.0.0] - 2024-05-20
+
+### Added
+- Dynamic version display using package_info_plus
+- Build number tracking in app metadata
+
+### Changed
+- Updated package_info_plus dependency to 8.3.0
+- Migrated version display from hardcoded value to dynamic detection
+
+### Improved
+- User interface consistency in about dialog
+- Error handling for version information loading 

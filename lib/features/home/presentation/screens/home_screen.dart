@@ -13,6 +13,7 @@ import 'package:chordly/core/theme/text_styles.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:chordly/core/services/version_service.dart';
 import 'package:chordly/features/settings/presentation/screens/settings_screen.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class GroupListItem extends StatelessWidget {
   final GroupModel group;
@@ -617,18 +618,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                           builder: (context) => AlertDialog(
                             title: Text('Acerca de Chordly',
                                 style: AppTextStyles.dialogTitle(context)),
-                            content: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Versión: 1.1.0',
-                                    style: AppTextStyles.subtitle(context)),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Desarrollado por DevCross\n© 2025 Todos los derechos reservados',
-                                  style: AppTextStyles.metadata(context),
-                                ),
-                              ],
+                            content: FutureBuilder<PackageInfo>(
+                              future: PackageInfo.fromPlatform(),
+                              builder: (context, snapshot) {
+                                if (snapshot.connectionState ==
+                                    ConnectionState.waiting) {
+                                  return const CircularProgressIndicator();
+                                }
+                                if (snapshot.hasError) {
+                                  return Text(
+                                      'Error obteniendo versión: ${snapshot.error}');
+                                }
+                                final packageInfo = snapshot.data!;
+                                return Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('Versión: ${packageInfo.version}',
+                                        style: AppTextStyles.subtitle(context)),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Desarrollado por DevCross\n© 2025 Todos los derechos reservados',
+                                      style: AppTextStyles.metadata(context),
+                                    ),
+                                  ],
+                                );
+                              },
                             ),
                             actions: [
                               TextButton(

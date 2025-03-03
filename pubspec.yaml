@@ -12,7 +12,7 @@ dependencies:
   # Firebase
   firebase_core: ^2.25.4
   firebase_auth: ^4.17.4
-  cloud_firestore: ^4.15.4
+  cloud_firestore: ^4.15.1
   firebase_storage: ^11.1.2
   # Estado y DI
   flutter_riverpod: ^2.4.9
@@ -37,6 +37,7 @@ dependencies:
   shared_preferences: ^2.2.2
   youtube_player_flutter: ^9.0.4
   url_launcher: ^6.2.0
+  package_info_plus: ^8.3.0
 
 dev_dependencies:
   flutter_test: 
