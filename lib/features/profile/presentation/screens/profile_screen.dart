@@ -10,6 +10,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:chordly/core/theme/text_styles.dart';
 import 'package:intl/intl.dart';
 import 'package:chordly/features/auth/providers/online_status_provider.dart';
+import 'package:chordly/features/user/services/user_service.dart';
+import 'package:chordly/core/providers/user_provider.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   final String userId;
@@ -49,12 +51,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _updateBiography(String newBiography) async {
-    final user = ref.read(authProvider).value;
-    if (user != null) {
-      await ref
-          .read(firestoreServiceProvider)
-          .updateUserBiography(user.uid, newBiography);
-    }
+    await ref.read(userServiceProvider).updateBiography(newBiography);
   }
 
   Future<void> _updateProfilePicture() async {
@@ -72,11 +69,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           resourceType: 'image',
         );
 
-        await user.updatePhotoURL(imageUrl);
-        await ref
-            .read(firestoreServiceProvider)
-            .updateUserProfilePicture(user.uid, imageUrl);
-
+        await ref.read(userServiceProvider).updateProfilePicture(imageUrl);
         ref.invalidate(authProvider);
       }
     }
@@ -86,19 +79,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final user = ref.read(authProvider).value;
     if (user != null) {
       try {
-        await user.updateDisplayName(newDisplayName);
-
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .update({
-          'displayName': newDisplayName,
-        });
-
-        await ref
-            .read(firestoreServiceProvider)
-            .updateUserDisplayNameInDocs(user.uid, newDisplayName);
-
+        await ref.read(userServiceProvider).updateDisplayName(newDisplayName);
         ref.invalidate(authProvider);
       } catch (e) {
         if (mounted) {
@@ -191,9 +172,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   String _formatFirestoreDate(Timestamp? timestamp) {
-    if (timestamp == null) return 'No disponible';
-    final dateTime = timestamp.toDate();
-    return DateFormat('dd/MM/yyyy HH:mm').format(dateTime);
+    if (timestamp == null) return 'Nunca';
+    final date = timestamp.toDate();
+    return DateFormat('dd/MM/yyyy HH:mm').format(date);
   }
 
   Widget _buildEditableName(String? displayName, bool canEdit) {
@@ -245,7 +226,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           final userData = snapshot.data!;
           final displayName = userData['displayName'] as String?;
           final email = userData['email'] as String?;
-          final photoURL = userData['profilePicture'] as String?;
+          final profilePicture = userData['profilePicture'] as String?;
           final biography = userData['biography'] as String?;
 
           return SingleChildScrollView(
@@ -258,9 +239,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     children: [
                       CircleAvatar(
                         radius: 60,
-                        backgroundImage:
-                            photoURL != null ? NetworkImage(photoURL) : null,
-                        child: photoURL == null
+                        backgroundImage: profilePicture != null
+                            ? NetworkImage(profilePicture)
+                            : null,
+                        child: profilePicture == null
                             ? const Icon(Icons.person, size: 60)
                             : null,
                       ),
@@ -324,6 +306,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   title: const Text('Fecha de creación'),
                   subtitle: Text(_formatFirestoreDate(
                       userData['createdAt'] as Timestamp?)),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.update),
+                  title: const Text('Última actualización'),
+                  subtitle: Text(_formatFirestoreDate(
+                      userData['updatedAt_user'] as Timestamp?)),
                 ),
                 _buildProfileInfo(userData),
                 const SizedBox(height: 24),

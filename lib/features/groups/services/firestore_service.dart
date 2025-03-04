@@ -389,19 +389,6 @@ class FirestoreService {
     await batch.commit();
   }
 
-  Future<void> updateUserBiography(String userId, String biography) async {
-    await firestore.collection('users').doc(userId).update({
-      'biography': biography,
-    });
-  }
-
-  Future<void> updateUserProfilePicture(
-      String userId, String downloadURL) async {
-    await firestore.collection('users').doc(userId).update({
-      'profilePicture': downloadURL,
-    });
-  }
-
   Future<DocumentReference> createSong(
       Map<String, dynamic> songData, String userId) async {
     // Asegurar que los campos tengan el formato correcto
@@ -451,5 +438,43 @@ class FirestoreService {
     }
 
     await batch.commit();
+  }
+
+  Future<void> migrateUserDataStructure() async {
+    final users = await firestore.collection('users').get();
+
+    for (final userDoc in users.docs) {
+      await userDoc.reference.update({
+        'updatedAt_user':
+            userDoc.data()['updatedAt'] ?? FieldValue.serverTimestamp()
+      });
+    }
+  }
+
+  Future<void> migrateUserTimestamps() async {
+    final users = await firestore.collection('users').get();
+
+    for (final userDoc in users.docs) {
+      final data = userDoc.data();
+      if (data['updatedAt_user'] == null) {
+        await userDoc.reference.update({
+          'updatedAt_user': data['updatedAt'] ?? FieldValue.serverTimestamp()
+        });
+      }
+    }
+  }
+
+  Future<void> migrateProfilePictures() async {
+    final users = await firestore.collection('users').get();
+
+    for (final userDoc in users.docs) {
+      final data = userDoc.data();
+      if (data['photoURL'] != null && data['profilePicture'] == null) {
+        await userDoc.reference.update({
+          'profilePicture': data['photoURL'],
+          'photoURL': FieldValue.delete(),
+        });
+      }
+    }
   }
 }

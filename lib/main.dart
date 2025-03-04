@@ -9,10 +9,35 @@ import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:chordly/core/providers/theme_provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:chordly/core/presentation/screens/splash_screen.dart';
+import 'package:chordly/features/auth/presentation/screens/login_screen.dart';
+import 'package:chordly/features/home/presentation/screens/home_screen.dart';
+import 'package:chordly/core/services/session_service.dart';
+import 'dart:async';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+// Agregar variable global
+DateTime _inactiveTime = DateTime.now();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+
+  final prefs = await SharedPreferences.getInstance();
+  final lastTermination = prefs.getInt('last_termination_time');
+
+  if (lastTermination != null) {
+    final session =
+        SessionService(FirebaseFirestore.instance, FirebaseAuth.instance);
+    final timeout = await session.getInactivityTimeout();
+    final expiryTime = lastTermination + (timeout * 60 * 1000);
+
+    if (DateTime.now().millisecondsSinceEpoch > expiryTime) {
+      await session.forceLogout();
+    }
+  }
+
   await _initializeDefaultSections();
 
   // Ejecutar purga al inicio
@@ -158,18 +183,100 @@ Future<void> _initializeDefaultSections() async {
   await batch.commit();
 }
 
-class MyApp extends ConsumerWidget {
+class MyApp extends ConsumerStatefulWidget {
   const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends ConsumerState<MyApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) async {
+    final session = ref.read(sessionProvider);
+    final prefs = await SharedPreferences.getInstance();
+
+    print('''
+    ==================================
+    Cambio de estado: ${_stateToString(state)}
+    Hora del evento: ${DateTime.now()}
+    Usuario logueado: ${session.isUserLoggedIn}
+    ==================================
+    ''');
+
+    switch (state) {
+      case AppLifecycleState.resumed:
+        await session.checkSessionExpiry();
+        break;
+      case AppLifecycleState.paused:
+        await session.updateLastInteraction();
+        _inactiveTime = DateTime.now();
+        Timer(Duration(minutes: session.inactivityTimeout), () {
+          if (DateTime.now().difference(_inactiveTime).inMinutes >=
+              session.inactivityTimeout) {
+            session.forceLogout();
+          }
+        });
+        break;
+      case AppLifecycleState.inactive:
+        print('🔵 Estado inactive - Aplicación no enfocada');
+        break;
+      case AppLifecycleState.detached:
+        print('🔴 Estado detached - Aplicación terminada');
+        await prefs.setInt(
+            'last_termination_time', DateTime.now().millisecondsSinceEpoch);
+        break;
+      case AppLifecycleState.hidden:
+        print('⚫ Estado hidden - Aplicación oculta (solo Android)');
+        _inactiveTime = DateTime.now();
+        Timer(Duration(minutes: session.inactivityTimeout), () {
+          if (DateTime.now().difference(_inactiveTime).inMinutes >=
+              session.inactivityTimeout) {
+            session.forceLogout();
+          }
+        });
+        break;
+    }
+  }
+
+  String _stateToString(AppLifecycleState state) {
+    return switch (state) {
+      AppLifecycleState.resumed => 'resumed (en primer plano)',
+      AppLifecycleState.inactive => 'inactive (no enfocada)',
+      AppLifecycleState.paused => 'paused (en segundo plano)',
+      AppLifecycleState.detached => 'detached (destruida)',
+      AppLifecycleState.hidden => 'hidden (oculta)',
+      _ => 'unknown',
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final themeState = ref.watch(themeProvider);
 
     return MaterialApp(
       title: 'Chordly',
       debugShowCheckedModeBanner: false,
       theme: themeState.themeData,
-      home: const AuthCheckScreen(),
+      initialRoute: '/splash',
+      routes: {
+        '/splash': (context) => const SplashScreen(),
+        '/auth_check': (context) => const AuthCheckScreen(),
+        '/login': (context) => const LoginScreen(),
+        '/home': (context) => const HomeScreen(),
+      },
     );
   }
 }

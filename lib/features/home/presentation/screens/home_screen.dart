@@ -14,6 +14,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:chordly/core/services/version_service.dart';
 import 'package:chordly/features/settings/presentation/screens/settings_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:chordly/core/services/session_service.dart';
 
 class GroupListItem extends StatelessWidget {
   final GroupModel group;
@@ -88,6 +89,27 @@ class GroupListItem extends StatelessWidget {
   }
 }
 
+mixin SessionMixin<T extends StatefulWidget> on State<T> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _updateInteraction();
+    });
+  }
+
+  void _updateInteraction() {
+    final session = ProviderContainer().read(sessionProvider);
+    session.updateLastInteraction();
+  }
+
+  @override
+  void setState(VoidCallback fn) {
+    _updateInteraction();
+    super.setState(fn);
+  }
+}
+
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -96,7 +118,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, SessionMixin {
   final _searchController = TextEditingController();
 
   @override

@@ -87,20 +87,19 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ## [2.0.1] - 2024-05-20
 
-### Nuevas Características
-- 🎵 Sistema de metrónomo profesional con compensación de latencia
-- 🔊 Sonido de click optimizado (WAV 2kHz 50ms)
+### Added
+- Sistema de actualización forzada/opcional
+- Integración con Firestore para gestión remota de versiones
+- Lógica de comparación semántica de versiones
+- Nueva pantalla de Splash con chequeo de versión
 
-### Mejoras
-- 🎨 Unificación total de colores usando onSurface
-- 🚫 Eliminación de onPrimary en componentes interactivos
-- 🌗 Contraste garantizado en todos los estados UI
-- 🖱️ Menús persistentes que requieren gesto explícito para cerrar
-- 🎨 Unificación de colores de texto: 
-  - Negro puro para temas claro/rosa 
-  - Blanco puro para tema oscuro
-  - Eliminación de opacidades variables
-- ⚡ Precarga de assets de audio para mejor rendimiento
+### Changed
+- Flujo de navegación inicial para incluir chequeo de versión
+- Actualización de dependencias: url_launcher a 6.2.0
+
+### Improved
+- Manejo de actualizaciones críticas con modal no descartable
+- Visualización dinámica de release notes desde Firestore
 
 ### Correcciones
 - 🛠 Parámetro faltante `isEditing` en `EditSongScreen`
@@ -132,16 +131,41 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 - 🔇 Eliminación temporal del reproductor de videos funcional
 - 🗑️ Código obsoleto de la implementación anterior
 
-## [2.0.0] - 2024-05-20
+## [2.0.2] - 2024-05-20
 
 ### Added
-- Dynamic version display using package_info_plus
-- Build number tracking in app metadata
-
-### Changed
-- Updated package_info_plus dependency to 8.3.0
-- Migrated version display from hardcoded value to dynamic detection
+- Sistema de aviso de mantenimiento preventivo
+- Integración con Firestore para gestión remota de estados
+- Diálogo de mantenimiento no descartable
 
 ### Improved
-- User interface consistency in about dialog
-- Error handling for version information loading 
+- Flujo de chequeo inicial con prioridad a mantenimiento
+- Manejo de errores en conexión con Firestore
+
+## [2.0.3] - 2024-05-20
+
+### Added
+- Sistema de cooldown para recordatorios de actualización
+- Integración con SharedPreferences para tracking de recordatorios
+- Configuración remota de intervalo entre recordatorios
+
+### Improved
+- Experiencia de usuario al posponer actualizaciones
+- Manejo de frecuencia de recordatorios no intrusivos
+
+## [2.1.0] - 2024-03-03
+
+### Added
+- Sistema de actualización en tiempo real con Firestore
+- Manejo de mantenimiento con mensajes centrados
+- Registro detallado de eventos en consola
+
+### Changed
+- Mejorado el sistema de expiración de sesión
+- Optimizado el manejo de estados de la aplicación
+- Actualizadas dependencias de Firebase y Riverpod
+
+### Fixed
+- Errores de sincronización de estado de usuario
+- Problemas de caché en chequeo de actualizaciones
+- Centrado de texto en diálogos de mantenimiento 

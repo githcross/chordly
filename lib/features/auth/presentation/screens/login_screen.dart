@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chordly/features/auth/providers/auth_provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginScreen extends ConsumerWidget {
   const LoginScreen({super.key});
@@ -43,7 +48,7 @@ class LoginScreen extends ConsumerWidget {
               FilledButton.icon(
                 onPressed: () async {
                   try {
-                    await ref.read(authProvider.notifier).signInWithGoogle();
+                    await _handleSignInWithGoogle();
                   } catch (e) {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -73,5 +78,67 @@ class LoginScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _handleSignInWithGoogle() async {
+    try {
+      final googleUser = await GoogleSignIn().signIn();
+      if (googleUser == null) return;
+
+      final googleAuth = await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final userCredential =
+          await FirebaseAuth.instance.signInWithCredential(credential);
+      final user = userCredential.user!;
+
+      final userDoc =
+          FirebaseFirestore.instance.collection('users').doc(user.uid);
+      final docSnapshot = await userDoc.get();
+
+      final userData = {
+        'email': user.email,
+        'displayName': user.displayName,
+        'profilePicture': user.photoURL,
+        'lastLogin': FieldValue.serverTimestamp(),
+      };
+
+      if (!docSnapshot.exists) {
+        // Usuario nuevo
+        await userDoc.set({
+          ...userData,
+          'createdAt': FieldValue.serverTimestamp(),
+          'biography': '',
+        });
+      } else {
+        // Usuario existente
+        final updateData = <String, dynamic>{};
+        final currentData = docSnapshot.data()!;
+
+        // Verificar cambios en los datos
+        if (user.displayName != currentData['displayName']) {
+          updateData['displayName'] = user.displayName;
+        }
+        if (user.photoURL != currentData['profilePicture']) {
+          updateData['profilePicture'] = user.photoURL;
+        }
+
+        // Actualizar en una sola operación
+        await userDoc.update({
+          'lastLogin': FieldValue.serverTimestamp(),
+          ...updateData,
+        });
+      }
+
+      print('Operación de usuario completada: ${user.uid}');
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('last_termination_time');
+    } catch (e) {
+      print('Error durante el login con Google: $e');
+    }
   }
 }
