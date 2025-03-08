@@ -74,4 +74,19 @@ class AppTextStyles {
         textStyle: Theme.of(context).textTheme.bodyLarge,
         letterSpacing: -0.2,
       );
+
+  static TextStyle lyricsDisplayStyle(BuildContext context) {
+    return Theme.of(context).textTheme.bodyLarge!.copyWith(
+          fontSize: 14,
+          height: 1.5,
+          letterSpacing: 0.5,
+          fontFamily: 'Roboto', // Asegurar misma fuente
+        );
+  }
+
+  static TextStyle lyricsEditStyle(BuildContext context) {
+    return lyricsDisplayStyle(context).copyWith(
+      color: Colors.grey[800], // Color consistente
+    );
+  }
 }

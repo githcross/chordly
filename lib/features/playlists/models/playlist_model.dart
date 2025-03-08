@@ -36,6 +36,22 @@ class PlaylistSongItem {
     required this.notes,
     required this.duration,
   });
+
+  PlaylistSongItem copyWith({
+    String? songId,
+    int? order,
+    String? transposedKey,
+    String? notes,
+    String? duration,
+  }) {
+    return PlaylistSongItem(
+      songId: songId ?? this.songId,
+      order: order ?? this.order,
+      transposedKey: transposedKey ?? this.transposedKey,
+      notes: notes ?? this.notes,
+      duration: duration ?? this.duration,
+    );
+  }
 }
 
 enum PlaylistStatus {

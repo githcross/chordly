@@ -30,7 +30,7 @@ dependencies:
   share_plus: ^8.0.1
   google_fonts: ^6.1.0
   firebase_app_check: ^0.2.2+7
-  syncfusion_flutter_pdf: ^24.2.9
+  syncfusion_flutter_pdf: ^28.2.5
   path_provider: ^2.1.2
   audioplayers: ^5.2.1
   just_audio: ^0.9.34
@@ -38,6 +38,8 @@ dependencies:
   youtube_player_flutter: ^9.0.4
   url_launcher: ^6.2.0
   package_info_plus: ^8.3.0
+  pdf: ^3.10.0
+  shimmer: ^2.0.0
 
 dev_dependencies:
   flutter_test: 
@@ -53,7 +55,26 @@ flutter:
   assets:
     - assets/audio/click.wav
     - assets/logo/logo.png
+    - assets/logo/background.jpg
+    - assets/fonts/NotoSansSymbols-Regular.ttf
+    - assets/fonts/NotoSans-Bold.ttf
+    - assets/fonts/Urbanist-Thin.ttf
+    - assets/fonts/Urbanist-ExtraLight.ttf
+    - assets/fonts/Urbanist-Light.ttf
+    - assets/fonts/Urbanist-Regular.ttf
+    - assets/fonts/Urbanist-Medium.ttf
+    - assets/fonts/Urbanist-SemiBold.ttf
+    - assets/fonts/Urbanist-Bold.ttf
+    - assets/fonts/Urbanist-ExtraBold.ttf
+    - assets/fonts/Urbanist-Black.ttf
+    - assets/fonts/Urbanist-Italic.ttf
+
   fonts:
+    - family: Roboto
+      fonts:
+        - asset: assets/fonts/Roboto-Regular.ttf
+        - asset: assets/fonts/Roboto-Bold.ttf
+          weight: 700
     - family: Urbanist
       fonts:
         - asset: assets/fonts/Urbanist-Thin.ttf

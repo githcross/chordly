@@ -168,4 +168,25 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 ### Fixed
 - Errores de sincronización de estado de usuario
 - Problemas de caché en chequeo de actualizaciones
-- Centrado de texto en diálogos de mantenimiento 
+- Centrado de texto en diálogos de mantenimiento
+
+## [2.2.0] - 2023-10-15
+
+### Added
+- Implementación de banda inferior con mapa de secciones en la pantalla de detalles de canción
+- Indicador visual de sección activa en el mapa de secciones
+- Animación suave al cambiar entre secciones
+- Mejoras en la transposición de acordes con animaciones fluidas
+- Soporte para mostrar lista de canciones en la pantalla de detalles cuando se accede desde una playlist
+- Interacción mejorada en el AppBar para navegar entre canciones de la playlist
+
+### Fixed
+- Resuelto el problema de flickering en la animación de transposición de notas
+- Mejorado el rendimiento al cargar y mostrar letras de canciones
+- Corregido el comportamiento de la animación al cambiar entre secciones
+- Optimizado el manejo del estado en la pantalla de detalles de canción
+
+### Changed
+- Refactorizado el código de la pantalla de detalles para mejorar la mantenibilidad
+- Mejorada la experiencia de usuario al navegar entre canciones de una playlist
+- Optimizado el rendimiento general de la aplicación 

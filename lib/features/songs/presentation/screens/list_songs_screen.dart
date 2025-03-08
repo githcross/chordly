@@ -16,11 +16,13 @@ import 'package:chordly/features/songs/presentation/screens/add_song_screen.dart
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:syncfusion_flutter_pdf/pdf.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:convert';
 import 'package:chordly/features/songs/presentation/screens/edit_song_screen.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter/services.dart';
 
 class ListSongsScreen extends ConsumerStatefulWidget {
   final GroupModel group;
@@ -51,6 +53,20 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
     return Scaffold(
       body: Column(
         children: [
+          if (isSelectionMode)
+            AppBar(
+              title: Text('${selectedSongs.length} seleccionadas'),
+              leading: IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => _toggleSelectionMode(false),
+              ),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.share),
+                  onPressed: () => shareSongs(selectedSongs.toList()),
+                ),
+              ],
+            ),
           Expanded(
             child: StreamBuilder<List<QueryDocumentSnapshot>>(
               stream: _getSongsStream(),
@@ -66,6 +82,12 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
           ),
         ],
       ),
+      floatingActionButton: !isSelectionMode
+          ? FloatingActionButton(
+              onPressed: () => _showOptions(context),
+              child: const Icon(Icons.add),
+            )
+          : null,
     );
   }
 
@@ -100,208 +122,264 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
 
   Future<void> shareSongs(List<String> songIds) async {
     try {
+      print(
+          '[SHARE] Iniciando proceso de compartir ${songIds.length} canciones');
       if (songIds.isEmpty) return;
 
-      final tempDir = await getTemporaryDirectory();
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final pdfPath = '${tempDir.path}/songs_$timestamp.pdf';
-
       // Obtener datos de las canciones
+      print('[SHARE] Obteniendo datos de las canciones desde Firestore');
       final songs = await Future.wait(
         songIds.map((id) =>
             FirebaseFirestore.instance.collection('songs').doc(id).get()),
       );
 
-      // Crear y guardar el PDF
-      final document = PdfDocument();
-      _createPdfDocument(document, songs);
-      final List<int> bytes = await document.save();
-      await File(pdfPath).writeAsBytes(bytes);
-      document.dispose();
+      // Crear y compartir el PDF
+      await _createPdfDocument(songs);
+
+      if (mounted) {
+        _toggleSelectionMode(false);
+      }
+      print('[SHARE] Proceso de compartir completado exitosamente');
+    } catch (e) {
+      print('[SHARE ERROR] Error durante el proceso: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al compartir: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _createPdfDocument(List<DocumentSnapshot> songs) async {
+    try {
+      print('[PDF] Iniciando creación de PDF con ${songs.length} canciones');
+
+      // Crear documento PDF
+      final pdf = pw.Document();
+
+      // Cargar fuentes
+      final mainFont =
+          await rootBundle.load('assets/fonts/NotoSans-Regular.ttf');
+      final boldFont = await rootBundle.load('assets/fonts/NotoSans-Bold.ttf');
+      final mainTtf = pw.Font.ttf(mainFont);
+      final boldTtf = pw.Font.ttf(boldFont);
+
+      // Definir estilos
+      final titleStyle = pw.TextStyle(
+        font: boldTtf,
+        fontSize: 24,
+        color: PdfColors.blue,
+      );
+
+      final subtitleStyle = pw.TextStyle(
+        font: mainTtf,
+        fontSize: 14,
+        color: PdfColors.grey,
+      );
+
+      final lyricStyle = pw.TextStyle(
+        font: mainTtf,
+        fontSize: 12,
+        color: PdfColors.black,
+      );
+
+      final chordStyle = pw.TextStyle(
+        font: boldTtf,
+        fontSize: 10,
+        color: PdfColors.red,
+      );
+
+      // Definir márgenes y tamaño de página
+      final pageFormat = PdfPageFormat.a4;
+      final margin = 50.0;
+      final maxPageHeight = pageFormat.height - 2 * margin;
+
+      // Función para agregar una página con el contenido de la canción
+      void addSongPage(pw.Document pdf, String title, String author,
+          String tempo, List<pw.Widget> lyricWidgets, bool isFirstPage) {
+        pdf.addPage(
+          pw.Page(
+            pageFormat: pageFormat,
+            margin: pw.EdgeInsets.all(margin),
+            build: (pw.Context context) {
+              return pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  if (isFirstPage)
+                    pw.Container(
+                      padding: const pw.EdgeInsets.only(bottom: 20),
+                      decoration: pw.BoxDecoration(
+                        border: pw.Border(
+                          bottom: pw.BorderSide(
+                            color: PdfColors.blue,
+                            width: 1,
+                          ),
+                        ),
+                      ),
+                      child: pw.Column(
+                        children: [
+                          pw.Text(title,
+                              style: titleStyle,
+                              textAlign: pw.TextAlign.center),
+                          pw.SizedBox(height: 8),
+                          pw.Text(
+                            '$author - $tempo BPM',
+                            style: subtitleStyle,
+                            textAlign: pw.TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (isFirstPage) pw.SizedBox(height: 30),
+                  // Contenido
+                  ...lyricWidgets,
+                  // Pie de página
+                  pw.Expanded(
+                    child: pw.Container(
+                      alignment: pw.Alignment.bottomCenter,
+                      margin: const pw.EdgeInsets.only(top: 20),
+                      child: pw.Text(
+                        'Página ${context.pageNumber}',
+                        style: pw.TextStyle(
+                          font: mainTtf,
+                          fontSize: 10,
+                          color: PdfColors.grey,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      }
+
+      for (final song in songs) {
+        print('[PDF] Procesando canción: ${song.id}');
+        final data = song.data() as Map<String, dynamic>;
+        final title = data['title'] as String? ?? 'Sin título';
+        final author = data['author'] as String? ?? 'Autor desconocido';
+        final tempo = data['tempo']?.toString() ?? '0';
+        final lyrics = data['lyrics'] as String? ?? '';
+
+        // Parsear los acordes y el texto
+        final List<pw.Widget> lyricWidgets = [];
+        final lines = lyrics.split('\n');
+        for (final line in lines) {
+          if (line.trim().isEmpty) {
+            lyricWidgets.add(pw.SizedBox(height: 16));
+            continue;
+          }
+
+          final chordMatches = RegExp(r'\[(.*?)\]').allMatches(line);
+          if (chordMatches.isEmpty) {
+            lyricWidgets.add(pw.Text(line, style: lyricStyle));
+            continue;
+          }
+
+          // Procesar línea con acordes
+          final textSpans = <pw.TextSpan>[];
+          int lastIndex = 0;
+          for (final match in chordMatches) {
+            // Texto antes del acorde
+            if (match.start > lastIndex) {
+              textSpans.add(pw.TextSpan(
+                text: line.substring(lastIndex, match.start),
+                style: lyricStyle,
+              ));
+            }
+
+            // Acorde
+            textSpans.add(pw.TextSpan(
+              text: match.group(1),
+              style: chordStyle,
+            ));
+
+            lastIndex = match.end;
+          }
+
+          // Texto restante
+          if (lastIndex < line.length) {
+            textSpans.add(pw.TextSpan(
+              text: line.substring(lastIndex),
+              style: lyricStyle,
+            ));
+          }
+
+          lyricWidgets.add(pw.RichText(text: pw.TextSpan(children: textSpans)));
+        }
+
+        // Agregar la canción al PDF con paginación automática
+        double currentHeight = 0;
+        List<pw.Widget> currentPageWidgets = [];
+        bool isFirstPage = true;
+
+        for (final widget in lyricWidgets) {
+          final widgetHeight = _estimateWidgetHeight(widget);
+
+          if (currentHeight + widgetHeight > maxPageHeight) {
+            addSongPage(
+                pdf, title, author, tempo, currentPageWidgets, isFirstPage);
+            isFirstPage = false;
+            currentHeight = 0;
+            currentPageWidgets = [];
+          }
+
+          currentPageWidgets.add(widget);
+          currentHeight += widgetHeight;
+        }
+
+        // Agregar la última página si hay contenido restante
+        if (currentPageWidgets.isNotEmpty) {
+          addSongPage(
+              pdf, title, author, tempo, currentPageWidgets, isFirstPage);
+        }
+      }
+
+      // Guardar el PDF
+      final tempDir = await getTemporaryDirectory();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final pdfFileName = songs.length == 1
+          ? '${songs.first['title']}.pdf' // Nombre de la canción si es una sola
+          : 'canciones_$timestamp.pdf'; // Nombre genérico si son varias
+      final pdfPath = '${tempDir.path}/$pdfFileName';
+      final file = File(pdfPath);
+      await file.writeAsBytes(await pdf.save());
 
       // Compartir el PDF
       await Share.shareFiles([pdfPath], text: 'Canciones compartidas');
 
-      setState(() {
-        isSelectionMode = false;
-        selectedSongs.clear();
-      });
+      print('[PDF] Documento PDF creado exitosamente');
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error al compartir: $e')),
-      );
+      print('[PDF ERROR] Error durante la creación del PDF: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al generar PDF: $e')),
+        );
+      }
     }
   }
 
-  void _createPdfDocument(PdfDocument document, List<DocumentSnapshot> songs) {
-    // Configurar estilo del documento
-    final PdfStandardFont titleFont =
-        PdfStandardFont(PdfFontFamily.helvetica, 20, style: PdfFontStyle.bold);
-    final PdfStandardFont subtitleFont =
-        PdfStandardFont(PdfFontFamily.helvetica, 14);
-    final PdfStandardFont contentFont =
-        PdfStandardFont(PdfFontFamily.helvetica, 12);
-    final PdfStandardFont chordFont =
-        PdfStandardFont(PdfFontFamily.helvetica, 10);
-
-    // Colores para diferentes elementos
-    final PdfColor chordColor = PdfColor(0, 122, 255); // Azul para acordes
-    final PdfColor sectionColor =
-        PdfColor(255, 196, 0); // Amarillo para secciones
-    final PdfColor noteColor = PdfColor(0, 122, 255); // Azul para notas [...]
-
-    // Función para limpiar caracteres no soportados
-    String cleanText(String text) {
-      return text
-          .replaceAll('á', 'a')
-          .replaceAll('é', 'e')
-          .replaceAll('í', 'i')
-          .replaceAll('ó', 'o')
-          .replaceAll('ú', 'u')
-          .replaceAll('ñ', 'n')
-          .replaceAll('Á', 'A')
-          .replaceAll('É', 'E')
-          .replaceAll('Í', 'I')
-          .replaceAll('Ó', 'O')
-          .replaceAll('Ú', 'U')
-          .replaceAll('Ñ', 'N')
-          .replaceAll(RegExp(r'[^\x20-\x7E]'),
-              ''); // Mantener solo caracteres ASCII imprimibles
+  // Función para estimar la altura de un widget
+  double _estimateWidgetHeight(pw.Widget widget) {
+    if (widget is pw.Text) {
+      // La propiedad style no existe en pw.Text, usamos un valor fijo
+      return 12; // Altura predeterminada para texto
+    } else if (widget is pw.SizedBox) {
+      return widget.height ?? 0;
+    } else if (widget is pw.RichText) {
+      return widget.text.style?.fontSize ?? 12;
     }
+    return 12; // Altura predeterminada
+  }
 
-    for (var song in songs) {
-      final data = song.data() as Map<String, dynamic>;
-      final PdfPage page = document.pages.add();
-      var graphics = page.graphics;
-      final Rect bounds = Rect.fromLTWH(40, 40, page.getClientSize().width - 80,
-          page.getClientSize().height - 80);
-
-      // Agregar título
-      graphics.drawString(
-        cleanText(data['title']),
-        titleFont,
-        bounds: Rect.fromLTWH(bounds.left, bounds.top, bounds.width, 30),
-      );
-
-      // Agregar autor
-      if (data['author'] != null && data['author'].toString().isNotEmpty) {
-        graphics.drawString(
-          'Autor: ${cleanText(data['author'])}',
-          subtitleFont,
-          bounds: Rect.fromLTWH(bounds.left, bounds.top + 40, bounds.width, 20),
-        );
-      }
-
-      // Agregar tags si existen
-      if (data['tags'] != null && (data['tags'] as List).isNotEmpty) {
-        final tags = (data['tags'] as List)
-            .map((tag) => cleanText(tag.toString()))
-            .join(', ');
-        graphics.drawString(
-          'Tags: $tags',
-          subtitleFont,
-          bounds: Rect.fromLTWH(bounds.left, bounds.top + 60, bounds.width, 20),
-        );
-      }
-
-      // Procesar y agregar letra con formato
-      if (data['lyrics'] != null && data['lyrics'].toString().isNotEmpty) {
-        final lyrics = data['lyrics'].toString();
-        final lines = lyrics.split('\n');
-        double yPosition = bounds.top + 100;
-        final lineHeight = contentFont.height * 1.5;
-
-        for (var line in lines) {
-          // Si no hay suficiente espacio en la página actual, crear una nueva
-          if (yPosition + lineHeight > bounds.bottom) {
-            final newPage = document.pages.add();
-            graphics = newPage.graphics;
-            yPosition = bounds.top;
-          }
-
-          // Procesar línea para diferentes formatos
-          if (line.contains('(') && line.contains(')')) {
-            // Línea con acordes
-            final parts = line.split(RegExp(r'(\([^)]+\))'));
-            double xPosition = bounds.left;
-
-            for (var i = 0; i < parts.length; i++) {
-              if (i % 2 == 0) {
-                // Texto normal
-                graphics.drawString(
-                  cleanText(parts[i]),
-                  contentFont,
-                  brush: PdfSolidBrush(PdfColor(0, 0, 0)),
-                  bounds: Rect.fromLTWH(
-                      xPosition, yPosition, bounds.width, lineHeight),
-                );
-                xPosition +=
-                    contentFont.measureString(cleanText(parts[i])).width;
-              } else {
-                // Acordes
-                graphics.drawString(
-                  cleanText(parts[i]),
-                  chordFont,
-                  brush: PdfSolidBrush(chordColor),
-                  bounds: Rect.fromLTWH(
-                      xPosition, yPosition, bounds.width, lineHeight),
-                );
-                xPosition += chordFont.measureString(cleanText(parts[i])).width;
-              }
-            }
-          } else if (line.startsWith('_') && line.endsWith('_')) {
-            // Secciones (entre guiones bajos)
-            graphics.drawString(
-              cleanText(line.substring(1, line.length - 1)),
-              contentFont,
-              brush: PdfSolidBrush(sectionColor),
-              bounds: Rect.fromLTWH(
-                  bounds.left, yPosition, bounds.width, lineHeight),
-            );
-          } else if (line.contains('[') && line.contains(']')) {
-            // Notas (entre corchetes)
-            final parts = line.split(RegExp(r'(\[[^\]]+\])'));
-            double xPosition = bounds.left;
-
-            for (var i = 0; i < parts.length; i++) {
-              if (i % 2 == 0) {
-                // Texto normal
-                graphics.drawString(
-                  cleanText(parts[i]),
-                  contentFont,
-                  brush: PdfSolidBrush(PdfColor(0, 0, 0)),
-                  bounds: Rect.fromLTWH(
-                      xPosition, yPosition, bounds.width, lineHeight),
-                );
-                xPosition +=
-                    contentFont.measureString(cleanText(parts[i])).width;
-              } else {
-                // Notas
-                graphics.drawString(
-                  cleanText(parts[i]),
-                  contentFont,
-                  brush: PdfSolidBrush(noteColor),
-                  bounds: Rect.fromLTWH(
-                      xPosition, yPosition, bounds.width, lineHeight),
-                );
-                xPosition +=
-                    contentFont.measureString(cleanText(parts[i])).width;
-              }
-            }
-          } else {
-            // Texto normal
-            graphics.drawString(
-              cleanText(line),
-              contentFont,
-              bounds: Rect.fromLTWH(
-                  bounds.left, yPosition, bounds.width, lineHeight),
-            );
-          }
-
-          yPosition += lineHeight;
-        }
-      }
-    }
+  String _parseRichText(String input) {
+    return input
+        .replaceAllMapped(
+            RegExp(r'\[(.*?)\]'), (match) => '\n${match.group(1)}\n')
+        .replaceAllMapped(RegExp(r'\*(.*?)\*'), (match) => '${match.group(1)}')
+        .replaceAllMapped(RegExp(r'_(.*?)_'), (match) => '${match.group(1)}');
   }
 
   Future<void> showBackupDialog() async {
@@ -760,33 +838,39 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
                         ),
                   ),
                   onTap: () {
-                    if (isSelectionMode) {
-                      setState(() {
-                        if (selectedSongs.contains(song.id)) {
-                          selectedSongs.remove(song.id);
-                        } else {
-                          selectedSongs.add(song.id);
-                        }
-                      });
-                    } else {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => SongDetailsScreen(
-                            songId: song.id,
-                            groupId: widget.group.id,
-                          ),
-                        ),
-                      );
+                    print(
+                        '[NAVIGATION] Intentando acceder a canción ID: ${song.id}');
+                    print('[NAVIGATION] Grupo ID: ${widget.group.id}');
+                    print(
+                        '[NAVIGATION] Datos canción: ${song.data().toString()}');
+
+                    if (song.id.isEmpty) {
+                      print('[ERROR] ID de canción inválido');
+                      return;
                     }
-                  },
-                  onLongPress: () {
-                    setState(() {
-                      if (!isSelectionMode) {
-                        isSelectionMode = true;
-                        selectedSongs.add(song.id);
+
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => SongDetailsScreen(
+                          songId: song.id,
+                          groupId: widget.group.id,
+                        ),
+                      ),
+                    ).catchError((e) {
+                      print('[ERROR] Navigación fallida: $e');
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                              content:
+                                  Text('Error al acceder a la canción: $e')),
+                        );
                       }
                     });
+                  },
+                  onLongPress: () {
+                    _toggleSelectionMode(true);
+                    selectedSongs.add(song.id);
                   },
                 ),
               ),
@@ -795,6 +879,14 @@ class ListSongsScreenState extends ConsumerState<ListSongsScreen> {
         );
       },
     );
+  }
+
+  void _toggleSelectionMode(bool value) {
+    if (!mounted) return;
+    setState(() {
+      isSelectionMode = value;
+      if (!value) selectedSongs.clear();
+    });
   }
 
   Future<void> _exportBackup() async {

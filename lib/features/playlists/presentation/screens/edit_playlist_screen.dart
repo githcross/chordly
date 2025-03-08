@@ -24,6 +24,7 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
   late DateTime _selectedDate;
   late List<PlaylistSongItem> _songs;
   bool _isLoading = false;
+  bool _isEditingOrder = false;
 
   @override
   void initState() {
@@ -41,6 +42,44 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
         title:
             Text('Editar Playlist', style: AppTextStyles.appBarTitle(context)),
         actions: [
+          IconButton(
+            icon: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  _isEditingOrder ? Icons.check_circle : Icons.edit_note,
+                  color: _isEditingOrder
+                      ? Theme.of(context).colorScheme.primary
+                      : null,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  _isEditingOrder ? 'LISTO' : 'ORDENAR',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: _isEditingOrder
+                        ? Theme.of(context).colorScheme.primary
+                        : null,
+                  ),
+                ),
+              ],
+            ),
+            onPressed: () {
+              setState(() {
+                _isEditingOrder = !_isEditingOrder;
+                if (!_isEditingOrder) {
+                  _updateSongOrders();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Nuevo orden guardado exitosamente'),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                }
+              });
+            },
+            tooltip: _isEditingOrder ? 'Finalizar edición' : 'Editar orden',
+          ),
           TextButton.icon(
             onPressed: _savePlaylist,
             icon: const Icon(Icons.save_outlined),
@@ -48,146 +87,287 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
           ),
         ],
       ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            TextFormField(
-              controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: 'Nombre de la Playlist',
-                border: OutlineInputBorder(),
+      body: Column(
+        children: [
+          if (_isEditingOrder)
+            Container(
+              color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.touch_app,
+                      size: 18, color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Mantén presionado y arrastra para reordenar',
+                    style: TextStyle(
+                        color: Theme.of(context).colorScheme.primary,
+                        fontWeight: FontWeight.w500),
+                  ),
+                ],
               ),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'El nombre es obligatorio';
-                }
-                return null;
-              },
             ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _notesController,
-              decoration: const InputDecoration(
-                labelText: 'Notas (opcional)',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
-            const SizedBox(height: 16),
-            ListTile(
-              title: const Text('Fecha y Hora de Uso'),
-              subtitle: Text(
-                DateFormat('EEEE, d MMMM yyyy - HH:mm', 'es')
-                    .format(_selectedDate),
-              ),
-              trailing: const Icon(Icons.calendar_today),
-              onTap: () async {
-                final selectedDate = await showDatePicker(
-                  context: context,
-                  initialDate: _selectedDate,
-                  firstDate: DateTime.now(),
-                  lastDate: DateTime(2100),
-                );
-                if (selectedDate != null) {
-                  final selectedTime = await showTimePicker(
-                    context: context,
-                    initialTime: TimeOfDay.fromDateTime(_selectedDate),
-                  );
-                  if (selectedTime != null) {
-                    setState(() {
-                      _selectedDate = DateTime(
-                        selectedDate.year,
-                        selectedDate.month,
-                        selectedDate.day,
-                        selectedTime.hour,
-                        selectedTime.minute,
+          Expanded(
+            child: Form(
+              key: _formKey,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  TextFormField(
+                    controller: _nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Nombre de la Playlist',
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'El nombre es obligatorio';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _notesController,
+                    decoration: const InputDecoration(
+                      labelText: 'Notas (opcional)',
+                      border: OutlineInputBorder(),
+                    ),
+                    maxLines: 3,
+                  ),
+                  const SizedBox(height: 16),
+                  ListTile(
+                    title: const Text('Fecha y Hora de Uso'),
+                    subtitle: Text(
+                      DateFormat('EEEE, d MMMM yyyy - HH:mm', 'es')
+                          .format(_selectedDate),
+                    ),
+                    trailing: const Icon(Icons.calendar_today),
+                    onTap: () async {
+                      final selectedDate = await showDatePicker(
+                        context: context,
+                        initialDate: _selectedDate,
+                        firstDate: DateTime.now(),
+                        lastDate: DateTime(2100),
                       );
-                    });
-                  }
-                }
-              },
+                      if (selectedDate != null) {
+                        final selectedTime = await showTimePicker(
+                          context: context,
+                          initialTime: TimeOfDay.fromDateTime(_selectedDate),
+                        );
+                        if (selectedTime != null) {
+                          setState(() {
+                            _selectedDate = DateTime(
+                              selectedDate.year,
+                              selectedDate.month,
+                              selectedDate.day,
+                              selectedTime.hour,
+                              selectedTime.minute,
+                            );
+                          });
+                        }
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Canciones',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      TextButton.icon(
+                        onPressed: _addSongs,
+                        icon: const Icon(Icons.add),
+                        label: const Text('Agregar'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  ..._buildSongsList(),
+                ],
+              ),
             ),
-            const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Canciones',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                TextButton.icon(
-                  onPressed: _addSongs,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Agregar'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            ..._buildSongsList(),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   List<Widget> _buildSongsList() {
-    return _songs.map((song) {
-      return FutureBuilder<DocumentSnapshot>(
-        future: FirebaseFirestore.instance
-            .collection('songs')
-            .doc(song.songId)
-            .get(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Card(
-              child: ListTile(
-                title: Text('Cargando...'),
-              ),
-            );
-          }
-
-          final songData = snapshot.data!.data() as Map<String, dynamic>;
-          final displayKey = song.transposedKey.isNotEmpty
-              ? song.transposedKey
-              : songData['baseKey'] ?? '';
-
-          return Dismissible(
+    return [
+      ReorderableListView.builder(
+        buildDefaultDragHandles: false,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: _songs.length,
+        itemBuilder: (context, index) {
+          final song = _songs[index];
+          return FutureBuilder<DocumentSnapshot>(
             key: Key(song.songId),
-            direction: DismissDirection.endToStart,
-            background: Container(
-              color: Colors.red,
-              alignment: Alignment.centerRight,
-              padding: const EdgeInsets.only(right: 16),
-              child: const Icon(Icons.delete, color: Colors.white),
-            ),
-            onDismissed: (_) {
-              setState(() {
-                _songs.remove(song);
-              });
-            },
-            child: Card(
-              child: ListTile(
-                title: Text(songData['title']),
-                subtitle: Text(songData['author']),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (displayKey.isNotEmpty) Text(displayKey),
-                    IconButton(
-                      icon: const Icon(Icons.music_note),
-                      onPressed: () =>
-                          _showTransposeDialog(song, songData['baseKey'] ?? ''),
-                    ),
-                  ],
+            future: FirebaseFirestore.instance
+                .collection('songs')
+                .doc(song.songId)
+                .get(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const Card(
+                  child: ListTile(
+                    title: Text('Cargando...'),
+                  ),
+                );
+              }
+
+              final songData = snapshot.data!.data() as Map<String, dynamic>;
+              final displayKey = song.transposedKey.isNotEmpty
+                  ? song.transposedKey
+                  : songData['baseKey'] ?? '';
+
+              return Dismissible(
+                key: Key(song.songId),
+                direction: DismissDirection.endToStart,
+                background: Container(
+                  color: Colors.red,
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.only(right: 16),
+                  child: const Icon(Icons.delete, color: Colors.white),
                 ),
-              ),
-            ),
+                onDismissed: (_) {
+                  setState(() {
+                    _songs.remove(song);
+                  });
+                },
+                child: ReorderableDragStartListener(
+                  index: index,
+                  enabled: _isEditingOrder,
+                  child: Material(
+                    elevation: _isEditingOrder ? 4 : 0,
+                    borderRadius: BorderRadius.circular(8),
+                    child: ListTile(
+                      tileColor: _isEditingOrder
+                          ? Theme.of(context).colorScheme.surfaceVariant
+                          : null,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        side: BorderSide(
+                          color: _isEditingOrder
+                              ? Theme.of(context)
+                                  .colorScheme
+                                  .primary
+                                  .withOpacity(0.2)
+                              : Colors.transparent,
+                        ),
+                      ),
+                      leading: _isEditingOrder
+                          ? Badge(
+                              label: Text('${index + 1}'),
+                              backgroundColor:
+                                  Theme.of(context).colorScheme.primary,
+                              textColor: Colors.white,
+                              child: const Icon(Icons.drag_handle,
+                                  color: Colors.grey),
+                            )
+                          : null,
+                      title: Text(songData['title']),
+                      subtitle: Text(songData['author']),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (displayKey.isNotEmpty) Text(displayKey),
+                          IconButton(
+                            icon: const Icon(Icons.music_note),
+                            onPressed: () => _showTransposeDialog(
+                                song, songData['baseKey'] ?? ''),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
           );
         },
-      );
-    }).toList();
+        onReorder: (oldIndex, newIndex) {
+          setState(() {
+            if (oldIndex < newIndex) newIndex -= 1;
+            final song = _songs.removeAt(oldIndex);
+            _songs.insert(newIndex, song);
+
+            debugPrint(
+                '[REORDER] Canción movida de posición $oldIndex a $newIndex');
+            _updateSongOrders();
+          });
+        },
+      )
+    ];
+  }
+
+  void _updateSongOrders() async {
+    debugPrint('[ORDER UPDATE] Actualizando órdenes de canciones...');
+    for (int i = 0; i < _songs.length; i++) {
+      _songs[i] = _songs[i].copyWith(order: i);
+      debugPrint(' - Canción ${_songs[i].songId} -> orden: $i');
+    }
+
+    await _savePlaylist(silent: true);
+    debugPrint('[ORDER SAVED] Nuevo orden guardado en Firestore');
+  }
+
+  Future<void> _savePlaylist({bool silent = false}) async {
+    if (!silent && !_formKey.currentState!.validate()) return;
+
+    try {
+      setState(() => _isLoading = true);
+
+      final playlistRef = FirebaseFirestore.instance
+          .collection('groups')
+          .doc(widget.playlist.groupId)
+          .collection('playlists')
+          .doc(widget.playlist.id);
+
+      final playlistDoc = await playlistRef.get();
+      if (!playlistDoc.exists) throw Exception('La playlist no existe');
+
+      await playlistRef.update({
+        'name': _nameController.text.trim(),
+        'notes': _notesController.text.trim(),
+        'date': _selectedDate,
+        'songs': _songs
+            .map((song) => {
+                  'songId': song.songId,
+                  'order': song.order,
+                  'transposedKey': song.transposedKey,
+                  'notes': song.notes,
+                  'duration': song.duration,
+                })
+            .toList(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (mounted && !silent) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Playlist actualizada con éxito'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al actualizar playlist: ${e.toString()}'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _addSongs() async {
@@ -307,64 +487,6 @@ class _EditPlaylistScreenState extends State<EditPlaylistScreen> {
           duration: song.duration,
         );
       });
-    }
-  }
-
-  Future<void> _savePlaylist() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    try {
-      setState(() => _isLoading = true);
-
-      final playlistRef = FirebaseFirestore.instance
-          .collection('groups')
-          .doc(widget.playlist.groupId)
-          .collection('playlists')
-          .doc(widget.playlist.id);
-
-      final playlistDoc = await playlistRef.get();
-      if (!playlistDoc.exists) {
-        throw Exception('La playlist no existe');
-      }
-
-      await playlistRef.update({
-        'name': _nameController.text.trim(),
-        'notes': _notesController.text.trim(),
-        'date': _selectedDate,
-        'songs': _songs
-            .map((song) => {
-                  'songId': song.songId,
-                  'order': song.order,
-                  'transposedKey': song.transposedKey,
-                  'notes': song.notes,
-                  'duration': song.duration,
-                })
-            .toList(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Playlist actualizada con éxito'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al actualizar playlist: $e'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
     }
   }
 

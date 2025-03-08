@@ -273,13 +273,21 @@ class _LyricsInputFieldState extends State<LyricsInputField> {
   @override
   Widget build(BuildContext context) {
     return TextField(
-      controller: widget.controller,
-      maxLines: widget.isFullScreen ? null : 10,
-      minLines: widget.isFullScreen ? 20 : 5,
+      controller: _controller,
+      maxLines: null,
+      minLines: null,
+      expands: true,
+      keyboardType: TextInputType.multiline,
+      style: widget.style,
+      strutStyle: StrutStyle(
+        fontSize: widget.style?.fontSize,
+        height: widget.style?.height ?? 1.5,
+        leading: 0.5,
+      ),
       decoration: InputDecoration(
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        border: InputBorder.none,
+        contentPadding: EdgeInsets.zero,
+        isDense: true,
         hintText: 'Escribe la letra y acordes aquí...',
         suffixIcon: widget.isFullScreen && widget.onChordSelected != null
             ? IconButton(

@@ -57,51 +57,38 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
   @override
   void initState() {
     super.initState();
-    _songFuture = FirebaseFirestore.instance
+    _initializeControllers();
+  }
+
+  Future<void> _initializeControllers() async {
+    final snapshot = await FirebaseFirestore.instance
         .collection('songs')
         .doc(widget.songId)
-        .get()
-        .then((snapshot) {
-      if (!snapshot.exists) {
-        throw Exception('Documento de canción no encontrado');
-      }
+        .get();
 
-      _songData = snapshot.data() as Map<String, dynamic>;
+    if (!snapshot.exists) return;
 
-      // Asegurarnos de usar siempre la letra original, nunca la transpuesta
-      final originalLyrics = _songData['lyrics'] as String?;
-      if (originalLyrics == null) {
-        throw Exception('No se encontró la letra original de la canción');
-      }
+    _songData = snapshot.data()!;
 
-      final videoReference =
-          _songData['videoReference'] as Map<String, dynamic>?;
+    setState(() {
+      _titleController = TextEditingController(text: _songData['title']);
+      _authorController = TextEditingController(text: _songData['author']);
+      _lyricsController = TextEditingController(
+        text: _songData['lyrics'] ?? _songData['lyricsTranspose'] ?? '',
+      );
+      _tempoController = TextEditingController(
+          text: (_songData['tempo'] ?? _songData['bpm'] ?? 0).toString());
+      _durationController =
+          TextEditingController(text: _songData['duration'] ?? '');
+      _videoUrlController = TextEditingController(
+          text: _songData['videoReference']?['url'] ?? '');
+      _videoNotesController = TextEditingController(
+          text: _songData['videoReference']?['notes'] ?? '');
 
-      setState(() {
-        _titleController = TextEditingController(text: _songData['title']);
-        _authorController = TextEditingController(text: _songData['author']);
-        _lyricsController = TextEditingController(text: originalLyrics);
-        _tempoController = TextEditingController(
-            text: (_songData['tempo'] ?? _songData['bpm'] ?? 0).toString());
-        _durationController =
-            TextEditingController(text: _songData['duration'] ?? '');
-        _videoUrlController =
-            TextEditingController(text: videoReference?['url'] ?? '');
-        _videoNotesController =
-            TextEditingController(text: videoReference?['notes'] ?? '');
-
-        _selectedKey = _songData['baseKey'] ?? '';
-        _selectedTags = List.from(_songData['tags'] ?? []);
-        _status = _songData['status'] ?? 'borrador';
-        _isLoading = false;
-      });
-
-      return snapshot;
-    }).catchError((error) {
-      setState(() {
-        _error = error.toString();
-        _isLoading = false;
-      });
+      _selectedKey = _songData['baseKey'] ?? '';
+      _selectedTags = List.from(_songData['tags'] ?? []);
+      _status = _songData['status'] ?? 'borrador';
+      _isLoading = false;
     });
 
     _loadData();
@@ -384,13 +371,18 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
         onTap: _openFullScreenEditor,
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Text(
-            _lyricsController.text.isEmpty
-                ? 'Toca para comenzar a editar la letra...'
-                : _lyricsController.text,
+          child: DefaultTextStyle.merge(
             style: TextStyle(
+              inherit: false,
               fontSize: 14,
-              color: Colors.grey.shade800,
+              height: 1.5,
+              letterSpacing: 0.5,
+            ),
+            child: Text(
+              _lyricsController.text.isEmpty
+                  ? 'Toca para comenzar a editar la letra...'
+                  : _lyricsController.text,
+              style: AppTextStyles.lyricsEditStyle(context),
             ),
           ),
         ),
@@ -403,8 +395,10 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
       context: context,
       isScrollControlled: true,
       builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.9,
         padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+        ),
         child: Column(
           children: [
             _buildFullScreenHeader(),
@@ -413,23 +407,30 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
                 controller: _lyricsController,
                 isFullScreen: true,
                 onChordSelected: _insertChord,
+                style: AppTextStyles.lyricsEditStyle(context).copyWith(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white
+                      : Colors.black,
+                ),
               ),
             ),
-            _buildEditorTools(),
+            // Barra de herramientas como footer
+            Container(
+              padding: const EdgeInsets.only(top: 8),
+              decoration: BoxDecoration(
+                border: Border(top: BorderSide(color: Colors.grey.shade300)),
+              ),
+              child: _buildEditorTools(),
+            ),
           ],
         ),
       ),
-    ).then((_) {
-      // Forzar la actualización del estado cuando se cierra el editor
-      if (mounted) {
-        setState(() {});
-      }
-    });
+    );
   }
 
   Widget _buildFullScreenHeader() {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.only(bottom: 2),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -438,7 +439,7 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
             style: Theme.of(context).textTheme.headlineSmall,
           ),
           IconButton(
-            icon: const Icon(Icons.close),
+            icon: const Icon(Icons.expand),
             onPressed: () => Navigator.pop(context),
           ),
         ],
@@ -446,72 +447,39 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
     );
   }
 
-  Widget _buildFullScreenEditor() {
-    return Card(
-      elevation: 2,
-      child: LyricsInputField(
-        controller: _lyricsController,
-        onChordSelected: _insertChord,
-        isFullScreen: true,
-      ),
-    );
-  }
-
   Widget _buildEditorTools() {
-    final basicSections = [
-      {'name': 'Intro', 'emoji': '🎵', 'color': Colors.blue},
-      {'name': 'Verse', 'emoji': '📝', 'color': Colors.green},
-      {'name': 'Pre-Chorus', 'emoji': '🚀', 'color': Colors.purple},
-      {'name': 'Chorus', 'emoji': '🎶', 'color': Colors.orange},
-      {'name': 'Bridge', 'emoji': '🌉', 'color': Colors.purple},
-      {'name': 'Outro', 'emoji': '🎸', 'color': Colors.brown},
-    ];
-
-    final advancedSections = [
-      {'name': 'Refrain', 'emoji': '🔄', 'color': Colors.indigo},
-      {'name': 'Vamp', 'emoji': '🔁', 'color': Colors.deepPurple},
-      {'name': 'Interlude', 'emoji': '🎤', 'color': Colors.pink},
-      {'name': 'Breakdown', 'emoji': '⬇️', 'color': Colors.teal},
-      {'name': 'Build-Up', 'emoji': '🔺', 'color': Colors.red},
-      {'name': 'Post-Chorus', 'emoji': '🎵', 'color': Colors.amber},
-      {'name': 'Fade-Out', 'emoji': '🔚', 'color': Colors.grey},
-    ];
-
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          ...basicSections.map((section) => _buildToolButton(
-                section['name'] as String,
-                section['emoji'] as String,
-                section['color'] as Color,
-              )),
+          _buildToolButton('Intro', '🎵', Colors.blue),
+          _buildToolButton('Verse', '📝', Colors.green),
+          _buildToolButton('Chorus', '🎶', Colors.orange),
+          _buildToolButton('Bridge', '🌉', Colors.purple),
+          _buildToolButton('Outro', '🎸', Colors.brown),
           PopupMenuButton(
             icon: const Icon(Icons.expand_more),
-            itemBuilder: (context) => advancedSections
-                .map((section) => PopupMenuItem(
-                      child: ListTile(
-                        leading: Container(
-                          width: 24,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            color: section['color'] as Color,
-                            shape: BoxShape.circle,
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            section['emoji'] as String,
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                        ),
-                        title: Text(section['name'] as String),
-                      ),
-                      onTap: () => _insertSectionTag(section['name'] as String),
-                    ))
-                .toList(),
+            itemBuilder: (context) => [
+              _buildPopupItem('Pre-Chorus', '🚀', Colors.purple),
+              _buildPopupItem('Refrain', '🔄', Colors.indigo),
+              _buildPopupItem('Interlude', '🎤', Colors.pink),
+            ],
           ),
         ],
       ),
+    );
+  }
+
+  PopupMenuItem _buildPopupItem(String name, String emoji, Color color) {
+    return PopupMenuItem(
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: color,
+          child: Text(emoji),
+        ),
+        title: Text(name),
+      ),
+      onTap: () => _insertSectionTag(name),
     );
   }
 
@@ -556,6 +524,13 @@ class _EditSongScreenState extends ConsumerState<EditSongScreen> {
     _lyricsController.text = newText;
     _lyricsController.selection = TextSelection.fromPosition(
       TextPosition(offset: cursorPos + chord.length + 2),
+    );
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Acorde $chord insertado'),
+        duration: const Duration(milliseconds: 500),
+      ),
     );
   }
 

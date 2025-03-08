@@ -27,6 +27,7 @@ class PlaylistDetailsScreen extends StatefulWidget {
 
 class _PlaylistDetailsScreenState extends State<PlaylistDetailsScreen> {
   Duration _totalDuration = Duration.zero;
+  Map<String, dynamic>? _playlistData;
 
   @override
   void initState() {
@@ -48,98 +49,110 @@ class _PlaylistDetailsScreenState extends State<PlaylistDetailsScreen> {
           return _buildErrorScreen('Playlist no encontrada');
         }
 
-        final data = snapshot.data!.data() as Map<String, dynamic>;
-        final songs = (data['songs'] as List?) ?? [];
-        final date = (data['date'] as Timestamp).toDate();
+        _playlistData = snapshot.data!.data() as Map<String, dynamic>;
+        final songs = (_playlistData!['songs'] as List?) ?? [];
+        final date = (_playlistData!['date'] as Timestamp).toDate();
 
         return Scaffold(
           body: CustomScrollView(
             slivers: [
               SliverAppBar(
-                expandedHeight: 220,
-                flexibleSpace: FlexibleSpaceBar(
-                  background: Stack(
-                    children: [
-                      // Fondo degradado oscuro
-                      Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              const Color(0xFF1A1A2E), // Azul noche intenso
-                              const Color(0xFF16213E), // Azul marino profundo
-                            ],
-                          ),
-                        ),
-                      ),
-                      BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                        child: Container(
-                          color: const Color(0x80212A3E).withOpacity(
-                              0.3), // Azul oscuro semi-transparente
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Text(
-                              data['name'],
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleLarge
-                                  ?.copyWith(
-                                color: Colors.white,
-                                shadows: [
-                                  Shadow(
-                                    color: Colors.black.withOpacity(0.3),
-                                    blurRadius: 4,
-                                    offset: const Offset(1, 1),
-                                  ),
-                                ],
+                expandedHeight: 280,
+                pinned: true,
+                stretch: true,
+                flexibleSpace: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final scrollPosition = constraints.biggest.height;
+                    return FlexibleSpaceBar(
+                      title: scrollPosition < 100
+                          ? Text(
+                              _playlistData!['name'],
+                              style: TextStyle(
+                                color: Colors.white
+                                    .withOpacity(1 - scrollPosition / 100),
+                                fontSize: 18,
                               ),
-                              textAlign: TextAlign.center,
+                            )
+                          : null,
+                      background: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: Image.asset(
+                              'assets/logo/background.jpg',
+                              fit: BoxFit.cover,
+                              color: Colors.black.withOpacity(0.4),
+                              colorBlendMode: BlendMode.darken,
                             ),
-                            const SizedBox(height: 20),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                _buildBannerItem(
-                                  '${(data['songs'] as List).length} canciones',
-                                ),
-                                const SizedBox(width: 16),
-                                _buildBannerItem(
-                                  _formatDurationCompact(
-                                      _calculateTotalDuration(
-                                          data['songs'] as List)),
-                                ),
-                              ],
+                          ),
+                          BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                            child: Container(
+                              color: const Color(0x80212A3E).withOpacity(
+                                  0.3), // Azul oscuro semi-transparente
                             ),
-                            const SizedBox(height: 12),
-                            Row(
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
-                                Icon(Icons.calendar_month,
-                                    color: Colors.white.withOpacity(0.9),
-                                    size: 18),
-                                const SizedBox(width: 8),
                                 Text(
-                                  DateFormat('EEEE, d MMMM yyyy - HH:mm', 'es')
-                                      .format(date),
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 14.5,
+                                  _playlistData!['name'],
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleLarge
+                                      ?.copyWith(
+                                    color: Colors.white.withOpacity(0.95),
+                                    shadows: [
+                                      Shadow(
+                                        color: Colors.black.withOpacity(0.5),
+                                        blurRadius: 4,
+                                        offset: const Offset(1, 1),
+                                      ),
+                                    ],
                                   ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 20),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    _buildBannerItem(
+                                      '${(songs).length} canciones',
+                                    ),
+                                    const SizedBox(width: 16),
+                                    _buildBannerItem(
+                                      _formatDurationCompact(
+                                          _calculateTotalDuration(songs)),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Icon(Icons.calendar_month,
+                                        color: Colors.white.withOpacity(0.9),
+                                        size: 18),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      DateFormat(
+                                              'EEEE, d MMMM yyyy - HH:mm', 'es')
+                                          .format(date),
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14.5,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    );
+                  },
                 ),
               ),
               SliverToBoxAdapter(
@@ -148,8 +161,8 @@ class _PlaylistDetailsScreenState extends State<PlaylistDetailsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (data['notes']?.isNotEmpty ?? false)
-                        _buildNotesSection(data['notes']),
+                      if (_playlistData!['notes']?.isNotEmpty ?? false)
+                        _buildNotesSection(_playlistData!['notes']),
                       const SizedBox(height: 24),
                       Text(
                         'Canciones',
@@ -163,11 +176,13 @@ class _PlaylistDetailsScreenState extends State<PlaylistDetailsScreen> {
             ],
           ),
           floatingActionButton: FloatingActionButton(
-            onPressed: () => _editPlaylist(context, data),
-            child: const Icon(Icons.edit),
+            onPressed: () => _editPlaylist(context, _playlistData!),
+            child: Icon(Icons.edit,
+                color: Theme.of(context).colorScheme.onPrimary),
             heroTag: 'playlist_details_fab',
             mini: false,
             elevation: 4,
+            backgroundColor: Theme.of(context).colorScheme.primary,
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
         );
@@ -181,12 +196,12 @@ class _PlaylistDetailsScreenState extends State<PlaylistDetailsScreen> {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceVariant,
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(12),
           border: Border(
             left: BorderSide(
               width: 4,
-              color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+              color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
             ),
           ),
         ),
@@ -220,66 +235,142 @@ class _PlaylistDetailsScreenState extends State<PlaylistDetailsScreen> {
               final songData = snapshot.data!.data() as Map<String, dynamic>;
               final transposedKey = song is Map ? song['transposedKey'] : '';
 
-              return ListTile(
-                onTap: () =>
-                    _navigateToSongDetails(context, songId, index, songs),
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                leading: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.music_note_outlined,
+              return Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
                     color:
-                        Theme.of(context).colorScheme.primary.withOpacity(0.8),
-                    size: 20,
+                        Theme.of(context).colorScheme.outline.withOpacity(0.1),
+                    width: 1,
                   ),
                 ),
-                title: Text(
-                  songData['title'] ?? 'Sin título',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface,
-                    fontWeight: FontWeight.w500,
-                    fontSize: 16,
-                  ),
-                ),
-                subtitle: Text(
-                  songData['author'] ?? 'Autor desconocido',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.7),
-                    fontSize: 14,
-                  ),
-                ),
-                trailing: songData['duration']?.isNotEmpty ?? false
-                    ? Container(
-                        padding:
-                            EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surfaceVariant,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          songData['duration']!,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurface,
-                            fontWeight: FontWeight.w500,
-                            fontSize: 13,
+                child: InkWell(
+                  onTap: () =>
+                      _navigateToSongDetails(context, songId, index, songs),
+                  borderRadius: BorderRadius.circular(12),
+                  hoverColor:
+                      Theme.of(context).colorScheme.primary.withOpacity(0.03),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .primary
+                                .withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${index + 1}',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
                           ),
                         ),
-                      )
-                    : Text(
-                        '--:--',
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.4),
-                          fontSize: 13,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      songData['title'] ?? 'Sin título',
+                                      style: TextStyle(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onBackground,
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 14,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  if ((int.tryParse(
+                                              songData['tempo']?.toString() ??
+                                                  '') ??
+                                          0) >
+                                      0)
+                                    Padding(
+                                      padding: const EdgeInsets.only(left: 8),
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.speed,
+                                              size: 14,
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .primary),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            '${int.tryParse(songData['tempo']?.toString() ?? '') ?? 0}',
+                                            style: TextStyle(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .primary,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Text(
+                                    songData['author'] ?? 'Autor desconocido',
+                                    style: TextStyle(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  _buildInlineIconText(
+                                    Icons.music_note,
+                                    transposedKey.isNotEmpty
+                                        ? transposedKey
+                                        : songData['baseKey'] ?? 'N/A',
+                                    Theme.of(context).colorScheme.primary,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  _buildInlineIconText(
+                                    Icons.schedule,
+                                    songData['duration'] ?? '--:--',
+                                    Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+                        Icon(
+                          Icons.chevron_right,
+                          size: 20,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant
+                              .withOpacity(0.4),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               );
             },
@@ -296,20 +387,25 @@ class _PlaylistDetailsScreenState extends State<PlaylistDetailsScreen> {
     int index,
     List<dynamic> songs,
   ) {
+    final song = songs[index];
+    final cachedData = song is Map ? song : null;
     final songIds = songs.map((item) {
       if (item is Map) return item['songId'] as String;
       return item as String;
     }).toList();
 
+    final songIdToUse = song is Map ? song['songId'] as String : song as String;
+
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => SongDetailsScreen(
-          songId: songId,
+          songId: songIdToUse,
           groupId: widget.groupId,
-          playlistSongs: songIds,
-          currentIndex: index,
-          fromPlaylist: true,
+          initialData: (cachedData as Map<String, dynamic>?) ?? {},
+          playlistSongs: songIds.cast<String>(),
+          playlistId: widget.playlistId,
+          playlistName: _playlistData!['name'],
         ),
       ),
     );
@@ -468,6 +564,156 @@ class _PlaylistDetailsScreenState extends State<PlaylistDetailsScreen> {
           fontWeight: FontWeight.w500,
         ),
       ),
+    );
+  }
+
+  Widget _buildMusicChip(BuildContext context, String? key, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon,
+              size: 14,
+              color: Theme.of(context).colorScheme.onPrimaryContainer),
+          const SizedBox(width: 4),
+          Text(
+            key ?? 'N/A',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onPrimaryContainer,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDurationChip(BuildContext context, String duration) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceVariant,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.schedule,
+                  size: 16,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
+              const SizedBox(width: 6),
+              Text(
+                duration,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (duration != '--:--')
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              _formatDurationToMinutes(duration),
+              style: TextStyle(
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurfaceVariant
+                    .withOpacity(0.7),
+                fontSize: 10,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  String _formatDurationToMinutes(String duration) {
+    try {
+      final parts = duration.split(':');
+      if (parts.length == 2) {
+        final minutes = int.parse(parts[0]);
+        final seconds = int.parse(parts[1]);
+        return '${minutes}m ${seconds}s';
+      }
+      return duration;
+    } catch (_) {
+      return duration;
+    }
+  }
+
+  Widget _buildDetailChip(
+      BuildContext context, String text, IconData icon, Color color,
+      {String? secondaryText}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon,
+              size: 14,
+              color: Theme.of(context).colorScheme.onSecondaryContainer),
+          const SizedBox(width: 6),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                text,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSecondaryContainer,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              if (secondaryText != null)
+                Text(
+                  secondaryText,
+                  style: TextStyle(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSecondaryContainer
+                        .withOpacity(0.7),
+                    fontSize: 10,
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInlineIconText(IconData icon, String text, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: color.withOpacity(0.7)),
+        const SizedBox(width: 4),
+        Text(
+          text,
+          style: TextStyle(
+            color: color,
+            fontSize: 12,
+          ),
+        ),
+      ],
     );
   }
 }

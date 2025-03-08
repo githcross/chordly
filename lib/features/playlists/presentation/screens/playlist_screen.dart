@@ -48,59 +48,63 @@ class PlaylistScreen extends StatelessWidget {
                   return Dismissible(
                     key: Key(playlist.id),
                     direction: DismissDirection.endToStart,
+                    movementDuration: const Duration(milliseconds: 300),
                     background: Container(
-                      color: Colors.red,
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       alignment: Alignment.centerRight,
                       padding: const EdgeInsets.only(right: 20),
                       child: const Icon(
-                        Icons.delete,
+                        Icons.delete_rounded,
                         color: Colors.white,
+                        size: 28,
                       ),
                     ),
-                    confirmDismiss: (direction) async {
-                      return await showDialog(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: const Text('Eliminar playlist'),
-                          content: const Text(
-                              '¿Estás seguro de que quieres eliminar esta playlist?'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.of(context).pop(false),
-                              child: const Text('Cancelar'),
-                            ),
-                            TextButton(
-                              onPressed: () => Navigator.of(context).pop(true),
-                              child: const Text('Eliminar'),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                    onDismissed: (direction) {
-                      FirebaseFirestore.instance
-                          .collection('groups')
-                          .doc(groupId)
-                          .collection('playlists')
-                          .doc(playlist.id)
-                          .delete();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Playlist eliminada'),
-                        ),
-                      );
-                    },
-                    child: ListTile(
-                      title: Text(
-                        data['name'] ?? 'Sin nombre',
-                        style: Theme.of(context).textTheme.bodyLarge,
+                    child: Card(
+                      margin: const EdgeInsets.symmetric(
+                          vertical: 4, horizontal: 8),
+                      elevation: 1,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      subtitle:
-                          Text('${(data['songs'] as List).length} canciones'),
-                      leading: const Icon(Icons.queue_music),
-                      onTap: () {
-                        _openPlaylist(context, playlist.id);
-                      },
+                      child: ListTile(
+                        title: Text(
+                          data['name'] ?? 'Playlist sin nombre',
+                          style:
+                              Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                        ),
+                        subtitle: Text(
+                          '${(data['songs'] as List).length} ${(data['songs'] as List).length == 1 ? 'canción' : 'canciones'}',
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurface
+                                        .withOpacity(0.7),
+                                  ),
+                        ),
+                        leading: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .primary
+                                .withOpacity(0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.queue_music,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                        onTap: () {
+                          _openPlaylist(context, playlist.id);
+                        },
+                      ),
                     ),
                   );
                 },

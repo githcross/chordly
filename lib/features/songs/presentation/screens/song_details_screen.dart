@@ -18,6 +18,9 @@ import 'package:chordly/features/songs/presentation/widgets/song_section.dart';
 import 'package:chordly/features/songs/presentation/widgets/song_parser.dart';
 import 'package:chordly/features/songs/providers/song_sections_provider.dart';
 import 'package:chordly/features/songs/presentation/widgets/lyrics_input_field.dart';
+import 'package:flutter/gestures.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:shimmer/shimmer.dart';
 
 class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   final double minHeight;
@@ -51,17 +54,19 @@ class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
 class SongDetailsScreen extends ConsumerStatefulWidget {
   final String songId;
   final String groupId;
+  final Map<String, dynamic>? initialData;
   final List<String>? playlistSongs;
-  final int currentIndex;
-  final bool fromPlaylist;
+  final String? playlistId;
+  final String? playlistName;
 
   const SongDetailsScreen({
     super.key,
     required this.songId,
     required this.groupId,
+    this.initialData,
     this.playlistSongs,
-    this.currentIndex = 0,
-    this.fromPlaylist = false,
+    this.playlistId,
+    this.playlistName,
   });
 
   @override
@@ -80,8 +85,6 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
   double _fontSize = 16.0;
   double _landscapeFontSize = 16.0;
   bool _isInitialized = false;
-  late PageController _pageController;
-  int _currentIndex = 0;
   final ScrollController _autoScrollController = ScrollController();
   bool _isAutoScrolling = false;
   double _scrollSpeed = 50.0; // Pixeles por segundo
@@ -96,6 +99,11 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
   late Map<String, dynamic> _songData;
   bool _wasMetronomePlaying = false;
   bool _isMetronomeActive = false;
+  int _currentSectionIndex = 0;
+  late final ScrollController _sectionScrollController;
+  List<String>? _playlistSongs;
+  String? _playlistId;
+  String? _playlistName;
 
   // Agregar getter para isLandscape
   bool get isLandscape =>
@@ -107,45 +115,161 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
   // 1. Restaurar getter de transposición
   bool get hasActiveTransposition => _transposedLyrics != _originalLyrics;
 
+  // Agregar este getter
+  String get lyricsToDisplay => _transposedLyrics;
+
+  // 1. Definir estilos a nivel de clase
+  static const _lyricsBaseStyle = TextStyle(
+    fontFamily: 'Roboto',
+    package: 'chordly', // Importante para fuentes en paquetes
+    fontSize: 16,
+    color: Color(0xFF333333),
+    height: 1.8,
+    letterSpacing: 0.3,
+  );
+
+  static final _chordStyle = _lyricsBaseStyle.copyWith(
+    fontWeight: FontWeight.w900, // Black weight
+    color: Color(0xFF2196F3),
+    shadows: [
+      Shadow(
+        color: Colors.black.withOpacity(0.15),
+        offset: Offset(1, 1),
+        blurRadius: 2,
+      ),
+    ],
+  );
+
+  // 2. Método optimizado para parsing
+  List<TextSpan> _parseChords(String lyrics) {
+    final spans = <TextSpan>[];
+    final regex = RegExp(r'(\([A-Ga-g][#b]?.*?\))');
+    final parts = lyrics.split(regex);
+
+    for (int i = 0; i < parts.length; i++) {
+      if (i % 2 == 1) {
+        // Los índices impares son acordes
+        spans.add(TextSpan(
+          text: parts[i],
+          style: _chordStyle,
+          recognizer: TapGestureRecognizer()
+            ..onTap = () => _handleChordTap(parts[i]),
+        ));
+      } else {
+        spans.add(TextSpan(
+          text: parts[i],
+          style: _lyricsBaseStyle,
+        ));
+      }
+    }
+
+    return spans;
+  }
+
+  // 3. Widget final con verificación de fuentes
+  Widget _buildLyricsSection(String lyrics, String transposedLyrics) {
+    return FutureBuilder<void>(
+      future: _initializeLyrics(lyrics, transposedLyrics),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return _buildLyricsSkeleton();
+        }
+        return _buildLyricsContent();
+      },
+    );
+  }
+
+  Widget _buildLyricsSkeleton() {
+    return Shimmer.fromColors(
+      baseColor: Colors.grey[300]!,
+      highlightColor: Colors.grey[100]!,
+      child: Column(
+        children: List.generate(
+          5,
+          (index) => Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            height: 20,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLyricsContent() {
+    return RichText(
+      text: TextSpan(
+        style: _lyricsBaseStyle,
+        children: _parseChords(lyricsToDisplay),
+      ),
+    );
+  }
+
+  // 4. Verificar disponibilidad de Roboto
+  Future<bool> _isRobotoAvailable() async {
+    try {
+      final paragraphBuilder = ParagraphBuilder(
+        ParagraphStyle(fontFamily: 'Roboto'),
+      )..addText('Test');
+
+      paragraphBuilder.build().layout(ParagraphConstraints(width: 100));
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
-    _currentIndex = widget.currentIndex;
-    _pageController = PageController(initialPage: _currentIndex);
+    _sectionScrollController = ScrollController();
 
-    // Configurar stream principal
+    // Inicializar las letras con los datos iniciales si están disponibles
+    if (widget.initialData != null) {
+      _originalLyrics = widget.initialData!['lyrics'] ?? '';
+      _transposedLyrics =
+          widget.initialData!['lyricsTranspose'] ?? _originalLyrics;
+    }
+
     _initializeSongStream();
-
     _metronomePlayer = AudioPlayer();
     _initializeMetronome();
+    _playlistSongs = widget.playlistSongs;
+    _playlistId = widget.playlistId;
+    _playlistName = widget.playlistName;
   }
 
   // 2. Método separado para inicializar el stream
   void _initializeSongStream() {
-    _songStream = FirebaseFirestore.instance
+    _songStream = _getSongStream();
+  }
+
+  Stream<DocumentSnapshot> _getSongStream() {
+    print('[FIRESTORE] Cargando canción ID: ${widget.songId}');
+    print('[FIRESTORE] Grupo ID: ${widget.groupId}');
+
+    return FirebaseFirestore.instance
         .collection('songs')
         .doc(widget.songId)
-        .snapshots();
-
-    _songStream.listen((DocumentSnapshot snapshot) {
-      if (mounted && snapshot.exists) {
-        final data = snapshot.data()! as Map<String, dynamic>;
-        setState(() {
-          _songData = data;
-          _firestoreBpm = (data['tempo'] as num?)?.toInt() ?? 0;
-          _originalLyrics = data['lyrics']?.toString() ?? '';
-          _transposedLyrics =
-              data['lyricsTranspose']?.toString() ?? _originalLyrics;
-          _isInitialized = true;
-        });
+        .snapshots()
+        .handleError((error) {
+      print('[FIRESTORE ERROR] $error');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error cargando canción: $error')),
+        );
       }
     });
   }
 
   @override
   void dispose() {
+    _sectionScrollController.dispose();
     _transformationController.dispose();
-    _pageController.dispose();
     _autoScrollController.dispose();
     _metronomePlayer.dispose();
     _metronomeTimer?.cancel();
@@ -161,80 +285,74 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
   }) {
     final actualFontSize = fontSize ?? _fontSize;
 
-    // Usar _originalLyrics como base, a menos que haya una transposición activa
-    final lyricsToDisplay =
-        hasActiveTransposition ? _transposedLyrics : _originalLyrics;
-
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 200),
-      child: RichText(
-        key: ValueKey(
-            lyricsToDisplay), // Cambiar la clave para forzar la animación
-        text: _buildTextSpans(lyricsToDisplay, actualFontSize),
-        textAlign: TextAlign.left,
+      child: DefaultTextStyle(
+        key: ValueKey(_transposedLyrics),
+        style: TextStyle(
+          fontFamily: 'Roboto',
+          fontSize: actualFontSize,
+          color: Theme.of(context).colorScheme.onSurface,
+          height: 1.5,
+        ),
+        child: Builder(
+          builder: (context) {
+            final baseStyle = DefaultTextStyle.of(context).style;
+            final chordStyle = baseStyle.merge(TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.primary,
+            ));
+
+            return RichText(
+              text: _buildFormattedLyrics(
+                lyricsToDisplay,
+                baseStyle: baseStyle,
+                chordStyle: chordStyle,
+              ),
+            );
+          },
+        ),
       ),
     );
   }
 
-  TextSpan _buildTextSpans(String lyrics, double fontSize) {
-    final chordRegex = RegExp(r'\(([^)]+)\)');
-    final referenceRegex = RegExp(r'_([^_]+)_');
+  TextSpan _buildFormattedLyrics(
+    String lyrics, {
+    required TextStyle baseStyle,
+    required TextStyle chordStyle,
+  }) {
+    final List<TextSpan> textSpans = [];
+    final RegExp noteRegex = RegExp(r'\((.*?)\)');
 
-    // Dividir primero por acordes
-    final parts = lyrics.split(chordRegex);
-    final chords =
-        chordRegex.allMatches(lyrics).map((m) => m.group(1)!).toList();
-
-    List<TextSpan> textSpans = [];
-
-    for (int i = 0; i < parts.length; i++) {
-      // Procesar el texto para referencias (texto entre guiones bajos)
-      final textParts = parts[i].split(referenceRegex);
-      final references =
-          referenceRegex.allMatches(parts[i]).map((m) => m.group(1)!).toList();
-
-      // Agregar partes del texto y referencias
-      for (int j = 0; j < textParts.length; j++) {
-        // Agregar texto normal
-        if (textParts[j].isNotEmpty) {
-          textSpans.add(TextSpan(
-            text: textParts[j],
-            style: TextStyle(
-              fontSize: fontSize,
-              color: Colors.grey.shade700,
-              height: 1.5,
-            ),
-          ));
-        }
-
-        // Agregar referencia si existe
-        if (j < references.length) {
-          textSpans.add(TextSpan(
-            text: references[j],
-            style: TextStyle(
-              fontSize: fontSize,
-              color: Colors.amber[700],
-              fontWeight: FontWeight.bold,
-              height: 1.5,
-            ),
-          ));
-        }
-      }
-
-      // Agregar acorde si existe
-      if (i < chords.length) {
+    int currentIndex = 0;
+    for (final match in noteRegex.allMatches(lyrics)) {
+      if (match.start > currentIndex) {
         textSpans.add(TextSpan(
-          text: '(${chords[i]})',
-          style: TextStyle(
-            color: Colors.blue.shade800,
-            fontWeight: FontWeight.bold,
-            fontSize: fontSize,
-          ),
+          text: lyrics.substring(currentIndex, match.start),
+          style: baseStyle,
         ));
       }
+
+      final chordText = match.group(1)!;
+      textSpans.add(TextSpan(
+        text: '($chordText)',
+        style: chordStyle,
+      ));
+
+      currentIndex = match.end;
     }
 
-    return TextSpan(children: textSpans);
+    if (currentIndex < lyrics.length) {
+      textSpans.add(TextSpan(
+        text: lyrics.substring(currentIndex),
+        style: baseStyle,
+      ));
+    }
+
+    return TextSpan(
+      style: baseStyle,
+      children: textSpans,
+    );
   }
 
   void _transposeChords(bool isHalfStepUp) {
@@ -265,8 +383,13 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
         );
       }
 
-      setState(() {
-        _transposedLyrics = newTransposedLyrics;
+      // Usar un callback para actualizar el estado solo si es necesario
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _transposedLyrics != newTransposedLyrics) {
+          setState(() {
+            _transposedLyrics = newTransposedLyrics;
+          });
+        }
       });
 
       // Actualizar Firestore
@@ -405,104 +528,67 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Si no hay playlist, mostrar vista normal
-    if (widget.playlistSongs == null) {
-      return _buildSingleSongView();
-    }
+    return StreamBuilder<DocumentSnapshot>(
+      stream: _songStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          // Usar los datos iniciales mientras se carga
+          if (widget.initialData != null) {
+            return _buildSongContent(widget.initialData!);
+          }
+          return const Center(child: CircularProgressIndicator());
+        }
 
-    // Si hay playlist, envolver en PageView para permitir deslizar
-    return WillPopScope(
-      onWillPop: () async {
-        Navigator.pop(context, true);
-        return true;
+        if (!snapshot.hasData || !snapshot.data!.exists) {
+          return const Center(child: Text('Canción no encontrada'));
+        }
+
+        final songData = snapshot.data!.data() as Map<String, dynamic>;
+        _songData = songData;
+        final newLyrics = songData['lyrics'] ?? '';
+        final newTransposedLyrics = songData['lyricsTranspose'] ?? newLyrics;
+
+        // Actualizar el estado local solo si es necesario
+        if (!_isInitialized ||
+            _originalLyrics != newLyrics ||
+            _transposedLyrics != newTransposedLyrics) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() {
+                _originalLyrics = newLyrics;
+                _transposedLyrics = newTransposedLyrics;
+                _firestoreBpm =
+                    songData['tempo']?.toInt() ?? songData['bpm']?.toInt() ?? 0;
+                _isInitialized = true;
+                if (!_isMetronomeActive) {
+                  _localBpm = null;
+                }
+              });
+            }
+          });
+        }
+
+        return StreamBuilder<GroupRole>(
+          stream: _getUserRole(),
+          builder: (context, roleSnapshot) {
+            final userRole = roleSnapshot.data ?? GroupRole.member;
+            final canEdit =
+                userRole == GroupRole.admin || userRole == GroupRole.editor;
+
+            return Scaffold(
+              backgroundColor: isLandscape ? Colors.black : null,
+              appBar:
+                  isLandscape ? null : _buildAppBar(context, songData, canEdit),
+              body: Stack(
+                children: [
+                  _buildSongContent(songData),
+                  _buildMiniVideoPlayer(),
+                ],
+              ),
+            );
+          },
+        );
       },
-      child: Stack(
-        children: [
-          PageView.builder(
-            controller: _pageController,
-            physics: widget.fromPlaylist
-                ? const NeverScrollableScrollPhysics()
-                : const PageScrollPhysics(),
-            itemCount: widget.playlistSongs!.length,
-            onPageChanged: _handlePageChange,
-            itemBuilder: (context, index) {
-              // Asegurarnos de que estamos usando el ID correcto de la canción
-              final currentSongId = widget.playlistSongs![index];
-
-              return StreamBuilder<DocumentSnapshot>(
-                // Usar un stream específico para cada canción
-                stream: FirebaseFirestore.instance
-                    .collection('songs')
-                    .doc(currentSongId)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-
-                  if (!snapshot.data!.exists) {
-                    return _buildErrorScreen(
-                        'La canción no existe o fue eliminada');
-                  }
-
-                  final songData =
-                      snapshot.data!.data() as Map<String, dynamic>;
-
-                  // Inicializar las letras cuando se carga el documento
-                  if (!_isInitialized) {
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) {
-                        setState(() {
-                          _originalLyrics = songData['lyrics'] ?? '';
-                          _transposedLyrics =
-                              songData['lyricsTranspose'] ?? _originalLyrics;
-                          _firestoreBpm = songData['tempo']?.toInt() ??
-                              songData['bpm']?.toInt() ??
-                              0;
-                          _isInitialized = true;
-                          if (!_isMetronomeActive) {
-                            _localBpm = null;
-                          }
-                        });
-                      }
-                    });
-                  }
-
-                  return StreamBuilder<GroupRole>(
-                    stream: _getUserRole(),
-                    builder: (context, roleSnapshot) {
-                      final userRole = roleSnapshot.data ?? GroupRole.member;
-                      final canEdit = userRole == GroupRole.admin ||
-                          userRole == GroupRole.editor;
-
-                      return Scaffold(
-                        backgroundColor: isLandscape ? Colors.black : null,
-                        appBar: isLandscape
-                            ? null
-                            : _buildAppBar(context, songData, canEdit),
-                        body: Stack(
-                          children: [
-                            _buildSongContent(songData),
-                            if (isLandscape)
-                              Positioned(
-                                left: 0,
-                                right: 0,
-                                bottom: 0,
-                                child: _buildLandscapeControls(),
-                              ),
-                            _buildVideoPlayer(),
-                          ],
-                        ),
-                      );
-                    },
-                  );
-                },
-              );
-            },
-          ),
-          _buildVideoPlayer(),
-        ],
-      ),
     );
   }
 
@@ -513,71 +599,61 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
   ) {
     final key = songData['baseKey'] ?? 'N/A';
     final bpm = songData['tempo']?.toString() ?? 'N/A';
+    final hasPlaylist =
+        widget.playlistSongs != null && widget.playlistSongs!.isNotEmpty;
 
     return AppBar(
-      title: Row(
-        children: [
-          Expanded(
-            child: Text(
-              songData['title'] ?? 'Detalles de canción',
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+      title: GestureDetector(
+        onTap: hasPlaylist ? () => _showPlaylistSongsSheet(context) : null,
+        child: Row(
+          children: [
+            Expanded(
+              child: Hero(
+                tag: 'song-${songData['id']}-title',
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        songData['title'] ?? 'Detalles de canción',
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurface,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                      ),
+                    ),
+                    if (hasPlaylist)
+                      Icon(
+                        Icons.arrow_drop_down,
+                        color: Theme.of(context).colorScheme.primary,
+                        size: 24,
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              key,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
                     color: Theme.of(context).colorScheme.onSurface,
                   ),
-              overflow: TextOverflow.ellipsis,
             ),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            key,
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            '•',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            '$bpm BPM',
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
-          ),
-        ],
+            const SizedBox(width: 8),
+            Text(
+              '•',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '$bpm BPM',
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+            ),
+          ],
+        ),
       ),
       actions: [
-        if (widget.fromPlaylist && widget.playlistSongs != null)
-          IconButton(
-            icon: Icon(
-              Icons.chevron_left,
-              color: _currentIndex > 0
-                  ? Colors.white
-                  : Colors.white.withOpacity(0.3),
-            ),
-            onPressed: _currentIndex > 0
-                ? () => _pageController.previousPage(
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeInOut,
-                    )
-                : null,
-          ),
-        if (widget.fromPlaylist && widget.playlistSongs != null)
-          IconButton(
-            icon: Icon(
-              Icons.chevron_right,
-              color: _currentIndex < widget.playlistSongs!.length - 1
-                  ? Colors.white
-                  : Colors.white.withOpacity(0.3),
-            ),
-            onPressed: _currentIndex < widget.playlistSongs!.length - 1
-                ? () => _pageController.nextPage(
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeInOut,
-                    )
-                : null,
-          ),
         _buildSettingsMenu(context, songData, canEdit),
       ],
     );
@@ -632,140 +708,7 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
   }
 
   Widget _buildSongsList() {
-    return StreamBuilder<List<DocumentSnapshot>>(
-      stream: _getSongsStream(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        return ListView.builder(
-          itemCount: snapshot.data!.length,
-          itemBuilder: (context, index) {
-            final song = snapshot.data![index];
-            final data = song.data() as Map<String, dynamic>;
-            final isSelected = index == _currentIndex;
-
-            return ListTile(
-              selected: isSelected,
-              leading: isSelected
-                  ? Icon(Icons.play_arrow,
-                      color: Theme.of(context).colorScheme.primary)
-                  : Text('${index + 1}',
-                      style: Theme.of(context).textTheme.bodyLarge),
-              title: Text(
-                data['title'],
-                style: TextStyle(
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                ),
-              ),
-              subtitle: Text(data['author'] ?? ''),
-              onTap: () {
-                _pageController.animateToPage(
-                  index,
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeInOut,
-                );
-                // Cerrar bottom sheet si está abierto
-                if (MediaQuery.of(context).size.width <= 600) {
-                  Navigator.pop(context);
-                }
-              },
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Stream<List<DocumentSnapshot>> _getSongsStream() {
-    return Stream.fromFuture(
-      Future.wait(widget.playlistSongs!
-              .map(
-                (id) => FirebaseFirestore.instance
-                    .collection('songs')
-                    .doc(id)
-                    .get(),
-              )
-              .cast<Future<DocumentSnapshot>>())
-          .catchError((e) {
-        if (mounted) {
-          SnackBarUtils.showSnackBar(
-            context,
-            message: 'Error al cargar las canciones: $e',
-            isError: true,
-          );
-        }
-        return [];
-      }),
-    );
-  }
-
-  Widget _buildSingleSongView() {
-    return StreamBuilder<DocumentSnapshot>(
-      stream: _songStream,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (!snapshot.hasData || !snapshot.data!.exists) {
-          return const Center(child: Text('Canción no encontrada'));
-        }
-
-        final songData = snapshot.data!.data() as Map<String, dynamic>;
-        final newLyrics = songData['lyrics'] ?? '';
-        final newTransposedLyrics = songData['lyricsTranspose'] ?? newLyrics;
-
-        // Actualizar el estado local cuando los datos cambian
-        if (!_isInitialized ||
-            _originalLyrics != newLyrics ||
-            _transposedLyrics != newTransposedLyrics) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              setState(() {
-                _originalLyrics = newLyrics;
-                _transposedLyrics = newTransposedLyrics;
-                _firestoreBpm =
-                    songData['tempo']?.toInt() ?? songData['bpm']?.toInt() ?? 0;
-                _isInitialized = true;
-                if (!_isMetronomeActive) {
-                  _localBpm = null;
-                }
-              });
-            }
-          });
-        }
-
-        return StreamBuilder<GroupRole>(
-          stream: _getUserRole(),
-          builder: (context, roleSnapshot) {
-            final userRole = roleSnapshot.data ?? GroupRole.member;
-            final canEdit =
-                userRole == GroupRole.admin || userRole == GroupRole.editor;
-
-            return Scaffold(
-              backgroundColor: isLandscape ? Colors.black : null,
-              appBar:
-                  isLandscape ? null : _buildAppBar(context, songData, canEdit),
-              body: Stack(
-                children: [
-                  _buildSongContent(songData),
-                  if (isLandscape)
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: _buildLandscapeControls(),
-                    ),
-                  _buildVideoPlayer(),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
+    return const Center(child: Text('Funcionalidad de playlist no disponible'));
   }
 
   Widget _buildSongView(String songId) {
@@ -859,10 +802,9 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
                 ),
                 const Divider(height: 1),
                 Card(
-                  margin: EdgeInsets.zero, // Eliminar margen de la Card
+                  margin: EdgeInsets.zero,
                   shape: RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.zero, // Eliminar bordes redondeados
+                    borderRadius: BorderRadius.zero,
                   ),
                   child: Padding(
                     padding: const EdgeInsets.all(5.0),
@@ -881,7 +823,6 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Contenedor para el encabezado
         Container(
           padding: const EdgeInsets.all(16.0),
           color: Theme.of(context).colorScheme.surface,
@@ -916,13 +857,11 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
             ],
           ),
         ),
-        // Separador visual
         const Divider(height: 1),
-        // Contenedor para la letra
         Card(
-          margin: EdgeInsets.zero, // Eliminar margen de la Card
+          margin: EdgeInsets.zero,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.zero, // Eliminar bordes redondeados
+            borderRadius: BorderRadius.zero,
           ),
           child: Padding(
             padding: const EdgeInsets.all(5.0),
@@ -933,79 +872,188 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     );
   }
 
-  void _showInfoDialog(BuildContext context, Map<String, dynamic> songData) {
-    showDialog(
+  void _showSongInfoDialog() {
+    final songData = _songData;
+    if (songData.isEmpty) return;
+
+    final createdAt = _formatFirestoreDate(songData['createdAt'] as Timestamp?);
+    final updatedAt = _formatFirestoreDate(songData['updatedAt'] as Timestamp?);
+
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Información de la canción',
-          style: Theme.of(context).textTheme.titleLarge,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(25)),
         ),
-        content: SingleChildScrollView(
+        child: SingleChildScrollView(
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              _buildInfoRow('Creada por:', songData['author'] ?? 'Desconocido'),
-              _buildInfoRow(
-                  'Fecha creación:',
-                  songData['createdAt'] != null
-                      ? DateFormat('dd/MM/yyyy HH:mm')
-                          .format(songData['createdAt'].toDate())
-                      : 'No disponible'),
-              _buildInfoRow('Última edición por:',
-                  songData['lastUpdatedBy'] ?? 'Desconocido'),
-              _buildInfoRow(
-                  'Fecha última edición:',
-                  songData['updatedAt'] != null
-                      ? DateFormat('dd/MM/yyyy HH:mm')
-                          .format(songData['updatedAt'].toDate())
-                      : 'No disponible'),
-              const SizedBox(height: 16),
-              const Text('Colaboradores:',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
-              ...?songData['collaborators']
-                  ?.where((c) => c != null)
-                  .map((c) => Text('• $c')),
+              Center(
+                child: Container(
+                  width: 60,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 20),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[400],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              if (songData['title'] != null)
+                Text(
+                  songData['title']!,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                ),
+              if (songData['author'] != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'por ${songData['author']}',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: Colors.grey[600],
+                          fontStyle: FontStyle.italic,
+                        ),
+                  ),
+                ),
+              const SizedBox(height: 24),
+              _buildInfoSection(
+                icon: Icons.music_note,
+                title: 'Detalles Musicales',
+                children: [
+                  _buildInfoItem(
+                      'Tonalidad', songData['baseKey'] ?? 'No especificada'),
+                  _buildInfoItem('BPM', '${songData['tempo'] ?? 'N/A'}'),
+                  _buildInfoItem('Versión', songData['version'] ?? '1.0'),
+                ],
+              ),
+              const Divider(height: 40),
+              _buildInfoSection(
+                icon: Icons.history,
+                title: 'Historial',
+                children: [
+                  _buildInfoItem('Creada el', createdAt),
+                  _buildInfoItem('Última actualización', updatedAt),
+                  FutureBuilder<String>(
+                    future: _getLastUpdatedByName(
+                        songData['lastUpdatedBy'] as String?),
+                    builder: (context, snapshot) => _buildInfoItem(
+                        'Actualizado por', snapshot.data ?? 'Cargando...'),
+                  ),
+                ],
+              ),
+              const Divider(height: 40),
+              if (songData['collaborators'] != null &&
+                  (songData['collaborators'] as List).isNotEmpty)
+                _buildInfoSection(
+                  icon: Icons.people_alt,
+                  title: 'Colaboradores',
+                  children: [
+                    FutureBuilder<List<String>>(
+                      future: _getCollaboratorNames(
+                          (songData['collaborators'] as List<dynamic>)
+                              .cast<String>()),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const CircularProgressIndicator();
+                        }
+
+                        if (snapshot.hasError) {
+                          return Text('Error: ${snapshot.error}');
+                        }
+
+                        final collaboratorNames =
+                            snapshot.data ?? ['No disponibles'];
+
+                        return Wrap(
+                          spacing: 8,
+                          children: collaboratorNames
+                              .map((name) => Chip(
+                                    label: Text(name),
+                                    avatar: Icon(
+                                      Icons.person,
+                                      size: 18,
+                                      color:
+                                          Theme.of(context).colorScheme.primary,
+                                    ),
+                                  ))
+                              .toList(),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              const SizedBox(height: 20),
             ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cerrar'),
-          ),
-        ],
       ),
     );
   }
 
-  Widget _buildInfoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: RichText(
-        text: TextSpan(
-          style: TextStyle(
-            color: Theme.of(context).colorScheme.onSurface,
-            fontSize: Theme.of(context).textTheme.bodyMedium?.fontSize,
-          ),
+  Widget _buildInfoSection(
+      {required IconData icon,
+      required String title,
+      required List<Widget> children}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            TextSpan(
-              text: '$label ',
+            Icon(icon, size: 20, color: Colors.grey[600]),
+            const SizedBox(width: 8),
+            Text(
+              title,
               style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.8),
-              ),
-            ),
-            TextSpan(
-              text: value,
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface,
-                height: 1.5,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[800],
+                letterSpacing: 0.5,
               ),
             ),
           ],
         ),
+        const SizedBox(height: 12),
+        ...children,
+      ],
+    );
+  }
+
+  Widget _buildInfoItem(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+                fontSize: 15,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1250,10 +1298,16 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
   Future<List<String>> _getCollaboratorNames(
       List<String> collaboratorIds) async {
     try {
-      final collaboratorNames = await Future.wait(
-        collaboratorIds.map((id) => _getCreatorName(id)),
+      final collaborators = await Future.wait(
+        collaboratorIds.map((id) async {
+          final userDoc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(id)
+              .get();
+          return userDoc.data()?['displayName'] ?? 'Usuario desconocido';
+        }),
       );
-      return collaboratorNames;
+      return collaborators.cast<String>();
     } catch (e) {
       return ['Error al cargar colaboradores'];
     }
@@ -1319,19 +1373,25 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
 
   void _showTeleprompterMode(
       BuildContext context, Map<String, dynamic> songData) {
-    Navigator.of(context).push(
+    Navigator.push(
+      context,
       MaterialPageRoute(
         builder: (context) => TeleprompterScreen(
           title: songData['title'],
           lyrics: _transposedLyrics,
-          playlistSongs: widget.playlistSongs,
-          currentIndex: _currentIndex,
         ),
       ),
     );
   }
 
   Widget _buildSongContent(Map<String, dynamic> songData) {
+    // Si no hay letras cargadas, usar las iniciales
+    if (_originalLyrics.isEmpty && widget.initialData != null) {
+      _originalLyrics = widget.initialData!['lyrics'] ?? '';
+      _transposedLyrics =
+          widget.initialData!['lyricsTranspose'] ?? _originalLyrics;
+    }
+
     final sections = ref.watch(songSectionsProvider).asData?.value ?? [];
     final parsedSections = parseSongStructure(_transposedLyrics, sections);
     final sectionKeys =
@@ -1368,258 +1428,82 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
         color: Theme.of(context).colorScheme.surface,
       ),
       child: ListView.builder(
+        controller: _sectionScrollController,
         scrollDirection: Axis.horizontal,
         itemCount: sections.length,
         itemBuilder: (context, index) {
           final section = sections[index];
-          return Container(
-            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor:
-                    section.color?.withOpacity(0.1) ?? Colors.transparent,
-                foregroundColor: section.color,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
-                  side: BorderSide(
-                    color:
-                        section.color?.withOpacity(0.5) ?? Colors.transparent,
-                    width: 2,
+          final isSelected = index == _currentSectionIndex;
+
+          return Builder(
+            builder: (btnContext) {
+              return Container(
+                margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isSelected
+                        ? (section.color?.withOpacity(0.3) ?? Colors.blue[100])
+                        : (section.color?.withOpacity(0.1) ??
+                            Colors.transparent),
+                    foregroundColor: section.color,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      side: BorderSide(
+                        color: isSelected
+                            ? (section.color ?? Colors.blue)
+                            : Colors.transparent,
+                        width: isSelected ? 3 : 2,
+                      ),
+                    ),
+                  ),
+                  onPressed: () {
+                    debugPrint(
+                        'TAP en botón de sección: $index - ${section.type}');
+                    setState(() => _currentSectionIndex = index);
+
+                    Scrollable.ensureVisible(
+                      keys[index].currentContext!,
+                      duration: const Duration(milliseconds: 500),
+                      curve: Curves.easeInOut,
+                    );
+
+                    _scrollToButton(index);
+                  },
+                  child: Text(
+                    section.type.toUpperCase(),
+                    style: TextStyle(
+                      fontWeight:
+                          isSelected ? FontWeight.w900 : FontWeight.bold,
+                      fontSize: 12,
+                    ),
                   ),
                 ),
-              ),
-              onPressed: () => Scrollable.ensureVisible(
-                keys[index].currentContext!,
-                duration: const Duration(milliseconds: 500),
-                curve: Curves.easeInOut,
-              ),
-              child: Text(
-                section.type.toUpperCase(),
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-              ),
-            ),
+              );
+            },
           );
         },
       ),
     );
   }
 
-  Widget _buildLandscapeControls() {
-    return Container(
-      margin: const EdgeInsets.all(16),
-      child: Material(
-        color: Colors.transparent,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.7),
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_downward, color: Colors.white),
-                onPressed: () => _transposeChords(false),
-              ),
-              IconButton(
-                icon: const Icon(Icons.arrow_upward, color: Colors.white),
-                onPressed: () => _transposeChords(true),
-              ),
-              const VerticalDivider(color: Colors.white30),
-              IconButton(
-                icon: const Icon(Icons.text_decrease, color: Colors.white),
-                onPressed: () {
-                  setState(() {
-                    _landscapeFontSize =
-                        (_landscapeFontSize - 2).clamp(12.0, 32.0);
-                  });
-                },
-              ),
-              Text(
-                '${_landscapeFontSize.round()}',
-                style: const TextStyle(color: Colors.white),
-              ),
-              IconButton(
-                icon: const Icon(Icons.text_increase, color: Colors.white),
-                onPressed: () {
-                  setState(() {
-                    _landscapeFontSize =
-                        (_landscapeFontSize + 2).clamp(12.0, 32.0);
-                  });
-                },
-              ),
-              const VerticalDivider(color: Colors.white30),
-              _buildBpmControls(),
-              const VerticalDivider(color: Colors.white30),
-              IconButton(
-                icon: const Icon(Icons.refresh, color: Colors.white),
-                onPressed: _restoreOriginalChords,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  void _scrollToButton(int index) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final buttonWidth = 120.0;
+    final scrollOffset =
+        (buttonWidth * index) + (buttonWidth / 2) - (screenWidth / 2);
 
-  // Modificar _getUserRole para usar el groupId resuelto
-  Stream<GroupRole> _getUserRole() {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return Stream.value(GroupRole.member);
-
-    final groupId = _resolvedGroupId ?? widget.groupId;
-    if (groupId == null || groupId.isEmpty)
-      return Stream.value(GroupRole.member);
-
-    return FirebaseFirestore.instance
-        .collection('groups')
-        .doc(groupId)
-        .collection('memberships')
-        .doc(userId)
-        .snapshots()
-        .map((snapshot) {
-      if (!snapshot.exists) return GroupRole.member;
-      return GroupRole.fromString(snapshot.data()?['role'] ?? 'member');
-    });
-  }
-
-  Widget _buildErrorScreen(String message) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Error'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.error_outline,
-              size: 48,
-              color: Colors.red,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              message,
-              style: Theme.of(context).textTheme.titleMedium,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Volver'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildVideoPlayer() {
-    if (!_isVideoVisible || _videoController == null) {
-      return const SizedBox.shrink();
-    }
-
-    return Positioned(
-      bottom: 16 + _videoOffsetY,
-      right: 16 + _videoOffsetX,
-      child: GestureDetector(
-        onPanUpdate: (details) {
-          setState(() {
-            _videoOffsetX -= details.delta.dx;
-            _videoOffsetY -= details.delta.dy;
-          });
-        },
-        child: Container(
-          width: 200,
-          height: 120,
-          decoration: BoxDecoration(
-            color: Colors.black,
-            borderRadius: BorderRadius.circular(8),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.2),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: YoutubePlayer(
-              controller: _videoController!,
-              showVideoProgressIndicator: true,
-              progressIndicatorColor: Theme.of(context).colorScheme.primary,
-              actionsPadding: const EdgeInsets.all(4),
-              bottomActions: [
-                CurrentPosition(),
-                ProgressBar(
-                  isExpanded: true,
-                  colors: ProgressBarColors(
-                    playedColor: Theme.of(context).colorScheme.primary,
-                    handleColor: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _initializeVideoPlayer(String videoUrl) {
-    final videoId = YoutubePlayer.convertUrlToId(videoUrl);
-    if (videoId != null) {
-      _videoController = YoutubePlayerController(
-        initialVideoId: videoId,
-        flags: const YoutubePlayerFlags(
-          autoPlay: true,
-          enableCaption: false,
-          useHybridComposition: true,
-          forceHD: false,
-          showLiveFullscreenButton: false,
-          disableDragSeek: false,
-          hideControls: false,
-          controlsVisibleAtStart: true,
-          mute: false,
-        ),
-      );
-      setState(() {
-        _isVideoVisible = true;
-        _videoOffsetX = 0;
-        _videoOffsetY = 0;
+    if (_sectionScrollController.hasClients) {
+      _sectionScrollController
+          .animateTo(
+        scrollOffset.clamp(
+            0.0, _sectionScrollController.position.maxScrollExtent),
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+      )
+          .then((_) {
+        debugPrint('Scroll AUTOMÁTICO a botón: $index completado');
       });
     }
-  }
-
-  Widget _buildVideoReferenceButton(Map<String, dynamic> songData) {
-    final videoReference = songData['videoReference'];
-    if (videoReference == null) return const SizedBox.shrink();
-
-    return IconButton(
-      icon: Icon(_isVideoVisible ? Icons.close : Icons.video_library),
-      tooltip: _isVideoVisible ? 'Cerrar video' : 'Ver video de referencia',
-      onPressed: () {
-        if (!_isVideoVisible) {
-          _initializeVideoPlayer(videoReference['url']);
-        } else {
-          setState(() {
-            _isVideoVisible = false;
-            _videoController?.dispose();
-            _videoController = null;
-          });
-        }
-      },
-    );
   }
 
   Widget _buildSongStructure(List<SongSection> sections,
@@ -1634,67 +1518,91 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
           separatorBuilder: (context, index) => const SizedBox(height: 24),
           itemBuilder: (context, index) {
             final section = sections[index];
-            return Container(
-              margin: const EdgeInsets.only(top: 24),
-              child: Card(
-                key: keys[index],
-                elevation: 3,
-                color: Theme.of(context).colorScheme.surface,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(
-                    color:
-                        section.color?.withOpacity(0.3) ?? Colors.transparent,
-                    width: 2,
+            final isSelected = index == _currentSectionIndex;
+
+            return GestureDetector(
+              onTap: () {
+                debugPrint(
+                    'TAP en tarjeta de sección: $index - ${section.type}');
+                setState(() => _currentSectionIndex = index);
+
+                Scrollable.ensureVisible(
+                  keys[index].currentContext!,
+                  duration: const Duration(milliseconds: 500),
+                  curve: Curves.easeInOut,
+                ).then((_) {
+                  debugPrint('Scroll AUTOMÁTICO a tarjeta: $index completado');
+                });
+
+                _scrollToButton(index);
+              },
+              child: Container(
+                margin: const EdgeInsets.only(top: 24),
+                child: Card(
+                  key: keys[index],
+                  elevation: isSelected ? 6 : 3,
+                  color: Theme.of(context).colorScheme.surface,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(
+                      color: isSelected
+                          ? (section.color ??
+                              Theme.of(context).colorScheme.primary)
+                          : Colors.transparent,
+                      width: isSelected ? 2 : 0,
+                    ),
                   ),
-                ),
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Positioned(
-                      top: -20,
-                      left: 16,
-                      child: Material(
-                        elevation: 3,
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: section.color,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: section.color?.withOpacity(0.3) ??
-                                  Colors.transparent,
-                              width: 1,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Positioned(
+                        top: -24,
+                        left: 16,
+                        child: Material(
+                          elevation: 3,
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: section.color,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: section.color?.withOpacity(0.3) ??
+                                    Colors.transparent,
+                                width: 1,
+                              ),
                             ),
-                          ),
-                          child: Text(
-                            section.type.toUpperCase(),
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelSmall
-                                ?.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 1.2,
-                                  fontSize: 12,
-                                ),
+                            child: Text(
+                              section.type.toUpperCase(),
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1.2,
+                                    fontSize: 12,
+                                  ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(
-                          top: 24, bottom: 20, left: 20, right: 20),
-                      child: Text(
-                        section.content,
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurface,
-                            ),
+                      Padding(
+                        padding: const EdgeInsets.only(
+                            top: 24, bottom: 10, left: 20, right: 20),
+                        child: Text(
+                          section.content,
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyLarge
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.onSurface,
+                              ),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             );
@@ -1776,7 +1684,7 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
             onTap: () => _navigateToTeleprompter(),
           ),
         ),
-        PopupMenuItem(
+        PopupMenuItem<String>(
           value: 'info',
           child: ListTile(
             title: const Text('Información de la canción'),
@@ -1794,56 +1702,65 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
   void _showMetronomeSettings(BuildContext context) {
     showModalBottomSheet(
       context: context,
-      isDismissible: false,
+      isScrollControlled: true,
+      isDismissible: true,
       enableDrag: true,
-      builder: (context) => Container(
-        width: MediaQuery.of(context).size.width * 0.95,
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(25)),
-        ),
-        padding: const EdgeInsets.only(bottom: 20),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            physics: const NeverScrollableScrollPhysics(),
-            child: StatefulBuilder(
-              builder: (context, setSheetState) => Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Text(
-                      'Configuración del Metrónomo',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w600,
-                          ),
-                    ),
+      builder: (context) => GestureDetector(
+        onTap: () => Navigator.pop(context),
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.95,
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(25)),
+          ),
+          padding: const EdgeInsets.only(bottom: 20),
+          child: SafeArea(
+            child: GestureDetector(
+              onTap: () {},
+              child: SingleChildScrollView(
+                physics: const NeverScrollableScrollPhysics(),
+                child: StatefulBuilder(
+                  builder: (context, setSheetState) => Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Text(
+                          'Configuración del Metrónomo',
+                          style:
+                              Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                        ),
+                      ),
+                      _buildBpmControls(),
+                      const SizedBox(height: 30),
+                      FilledButton.icon(
+                        icon: Icon(
+                          _isMetronomeActive ? Icons.stop : Icons.play_arrow,
+                          size: 28,
+                        ),
+                        label: Text(_isMetronomeActive ? 'Detener' : 'Iniciar'),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(200, 50),
+                          backgroundColor: _isMetronomeActive
+                              ? Colors.red
+                              : Theme.of(context).colorScheme.primary,
+                        ),
+                        onPressed: () {
+                          if (_isMetronomeActive) {
+                            _stopMetronome();
+                          } else {
+                            _startMetronome();
+                          }
+                          setSheetState(() {});
+                        },
+                      ),
+                    ],
                   ),
-                  _buildBpmControls(),
-                  const SizedBox(height: 30),
-                  FilledButton.icon(
-                    icon: Icon(
-                      _isMetronomeActive ? Icons.stop : Icons.play_arrow,
-                      size: 28,
-                    ),
-                    label: Text(_isMetronomeActive ? 'Detener' : 'Iniciar'),
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size(200, 50),
-                      backgroundColor: _isMetronomeActive
-                          ? Colors.red
-                          : Theme.of(context).colorScheme.primary,
-                    ),
-                    onPressed: () {
-                      if (_isMetronomeActive) {
-                        _stopMetronome();
-                      } else {
-                        _startMetronome();
-                      }
-                      setSheetState(() {});
-                    },
-                  ),
-                ],
+                ),
               ),
             ),
           ),
@@ -1855,54 +1772,62 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
   void _showTranspositionMenu(BuildContext context) {
     showModalBottomSheet(
       context: context,
-      isDismissible: false,
+      isScrollControlled: true,
+      isDismissible: true,
       enableDrag: true,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(25)),
-        ),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            physics: const NeverScrollableScrollPhysics(),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Text(
-                    'Transposición',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
+      builder: (context) => GestureDetector(
+        onTap: () => Navigator.pop(context),
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(25)),
+          ),
+          child: SafeArea(
+            child: GestureDetector(
+              onTap: () {},
+              child: SingleChildScrollView(
+                physics: const NeverScrollableScrollPhysics(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Text(
+                        'Transposición',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.arrow_upward),
+                      title: const Text('Subir medio tono'),
+                      trailing: const Icon(Icons.keyboard_arrow_up),
+                      onTap: () {
+                        _transposeChords(true);
+                      },
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.arrow_downward),
+                      title: const Text('Bajar medio tono'),
+                      trailing: const Icon(Icons.keyboard_arrow_down),
+                      onTap: () {
+                        _transposeChords(false);
+                      },
+                    ),
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const Icon(Icons.restart_alt),
+                      title: const Text('Restaurar original'),
+                      trailing: const Icon(Icons.refresh),
+                      onTap: () {
+                        _restoreOriginalChords();
+                      },
+                    ),
+                    const SizedBox(height: 20),
+                  ],
                 ),
-                ListTile(
-                  leading: const Icon(Icons.arrow_upward),
-                  title: const Text('Subir medio tono'),
-                  trailing: const Icon(Icons.keyboard_arrow_up),
-                  onTap: () {
-                    _transposeChords(true);
-                  },
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.arrow_downward),
-                  title: const Text('Bajar medio tono'),
-                  trailing: const Icon(Icons.keyboard_arrow_down),
-                  onTap: () {
-                    _transposeChords(false);
-                  },
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.restart_alt),
-                  title: const Text('Restaurar original'),
-                  trailing: const Icon(Icons.refresh),
-                  onTap: () {
-                    _restoreOriginalChords();
-                  },
-                ),
-                const SizedBox(height: 20),
-              ],
+              ),
             ),
           ),
         ),
@@ -1912,33 +1837,32 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
 
   bool get _isPlayingMetronome => _metronomeTimer != null;
 
-  void _handlePageChange(int index) {
-    setState(() {
-      _currentIndex = index;
-      _isInitialized = false;
-      _originalLyrics = '';
-      _transposedLyrics = '';
-      _metronomeTimer?.cancel();
-      _isVideoVisible = false;
-      _videoController?.dispose();
-      _videoController = null;
-      _videoOffsetX = 0;
-      _videoOffsetY = 0;
-      _scale = 1.0;
-      _fontSize = 16.0;
-      _landscapeFontSize = 16.0;
-      _localBpm = null;
-    });
-    _initializeSongStream();
-  }
-
   Future<void> _initializeMetronome() async {
     try {
-      final url = await AudioCache(prefix: 'assets/audio/').load('click.wav');
-      await _metronomePlayer.setSourceUrl(url.path);
+      final audioCache = AudioCache(prefix: 'assets/audio/');
+      final assetPath = await audioCache.load('click.wav');
+
+      // Obtener el valor actualizado de Firestore
+      final songDoc = await FirebaseFirestore.instance
+          .collection('songs')
+          .doc(widget.songId)
+          .get();
+
+      if (songDoc.exists) {
+        final songData = songDoc.data() as Map<String, dynamic>;
+        setState(() {
+          _firestoreBpm =
+              songData['tempo']?.toInt() ?? songData['bpm']?.toInt() ?? 0;
+          _localBpm = null; // Resetear cualquier ajuste local
+        });
+      }
+
+      await _metronomePlayer.setSourceAsset(assetPath.path);
       await _metronomePlayer.setPlaybackRate(1.0);
       await _metronomePlayer.setVolume(1.0);
       await _metronomePlayer.setReleaseMode(ReleaseMode.release);
+
+      print('Metrónomo inicializado con BPM: $_firestoreBpm');
     } catch (e) {
       print('Error inicializando metrónomo: $e');
     }
@@ -2012,131 +1936,220 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     }
   }
 
-  void _showSongInfoDialog() async {
-    final usersRef = FirebaseFirestore.instance.collection('users');
-    final dateFormat = DateFormat('dd/MM/yyyy HH:mm');
+  Stream<GroupRole> _getUserRole() {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return Stream.value(GroupRole.member);
 
-    // Obtener nombres de usuarios
-    final creatorName = await _getUserName(
-        _songData['creatorUserId'] ?? _songData['createdBy']);
-    final lastEditorName = await _getUserName(_songData['lastUpdatedBy']);
+    return FirebaseFirestore.instance
+        .collection('groups')
+        .doc(widget.groupId)
+        .collection('memberships')
+        .doc(userId)
+        .snapshots()
+        .map((snapshot) {
+      if (!snapshot.exists) return GroupRole.member;
+      return GroupRole.fromString(snapshot.data()?['role'] ?? 'member');
+    });
+  }
 
-    // Obtener colaboradores
-    final collaborators = await Future.wait(
-        (_songData['collaborators'] as List<dynamic>? ?? [])
-            .map((uid) => _getUserName(uid.toString()))
-            .toList());
+  Widget _buildMiniVideoPlayer() {
+    if (!_isVideoVisible || _videoController == null) {
+      return const SizedBox.shrink();
+    }
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Información detallada',
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface,
-                fontWeight: FontWeight.w600,
-              ),
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return Positioned(
+      left: _videoOffsetX,
+      top: _videoOffsetY,
+      child: GestureDetector(
+        onPanUpdate: (details) {
+          setState(() {
+            _videoOffsetX = (_videoOffsetX + details.delta.dx)
+                .clamp(0.0, MediaQuery.of(context).size.width - 200);
+            _videoOffsetY = (_videoOffsetY + details.delta.dy)
+                .clamp(0.0, MediaQuery.of(context).size.height - 112);
+          });
+        },
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.black,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 10,
+                spreadRadius: 2,
+              )
+            ],
+          ),
+          child: Stack(
             children: [
-              // Sección: Información Básica
-              _buildInfoSectionTitle('Información básica'),
-              _buildInfoRow('Título', _songData['title'] ?? 'Sin título'),
-              _buildInfoRow('Autor', _songData['author'] ?? 'Desconocido'),
-              _buildInfoRow(
-                  'Estado',
-                  _songData['status'] == 'publicado'
-                      ? 'Publicado'
-                      : 'Borrador ⚫'),
-
-              const SizedBox(height: 12),
-
-              // Sección: Datos Musicales
-              _buildInfoSectionTitle('Datos musicales'),
-              _buildInfoRow('Duración',
-                  _songData['duration']?.toString().padLeft(4, '0') ?? '00:00'),
-              _buildInfoRow(
-                  'BPM', '${_songData['tempo'] ?? _songData['bpm'] ?? '--'}'),
-              _buildInfoRow('Tonalidad base',
-                  _songData['baseKey']?.toUpperCase() ?? 'No definida'),
-
-              const SizedBox(height: 12),
-
-              // Sección: Multimedia
-              if (_songData['videoReference'] != null) ...[
-                _buildInfoSectionTitle('Referencia multimedia'),
-                if (_songData['videoReference']?['url'] != null)
-                  _buildInfoRow('Video', _songData['videoReference']?['url']),
-                if (_songData['videoReference']?['notes'] != null)
-                  _buildInfoRow(
-                      'Notas del video', _songData['videoReference']?['notes']),
-              ],
-
-              const SizedBox(height: 12),
-
-              // Sección: Metadatos
-              _buildInfoSectionTitle('Metadatos'),
-              _buildInfoRow('Creada por', creatorName ?? 'Desconocido'),
-              _buildInfoRow(
-                  'Fecha creación', _formattedDate(_songData['createdAt'])),
-              _buildInfoRow(
-                  'Última edición por', lastEditorName ?? 'Desconocido'),
-              _buildInfoRow('Fecha última edición',
-                  _formattedDate(_songData['updatedAt'])),
-
-              const SizedBox(height: 12),
-
-              // Sección: Colaboración
-              _buildInfoSectionTitle('Colaboración'),
-              if ((_songData['collaborators'] as List?)?.isNotEmpty ??
-                  false) ...[
-                _buildInfoRow('Total colaboradores',
-                    '${_songData['collaborators']?.length ?? 0}'),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  children: (_songData['collaborators'] as List)
-                      .map((uid) => _buildUserChip(uid))
-                      .toList(),
+              _buildVideoContent(),
+              Positioned(
+                top: 6,
+                right: 6,
+                child: Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.fast_rewind,
+                          color: Colors.white, size: 18),
+                      onPressed: () {
+                        final newPosition = _videoController!.value.position -
+                            const Duration(seconds: 10);
+                        _videoController!.seekTo(newPosition);
+                      },
+                      tooltip: 'Retroceder 10 segundos',
+                    ),
+                    IconButton(
+                      icon: Icon(
+                        _videoController!.value.isPlaying
+                            ? Icons.pause
+                            : Icons.play_arrow,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                      onPressed: () {
+                        if (_videoController!.value.isPlaying) {
+                          _videoController!.pause();
+                        } else {
+                          _videoController!.play();
+                        }
+                        setState(() {});
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.fast_forward,
+                          color: Colors.white, size: 18),
+                      onPressed: () {
+                        final newPosition = _videoController!.value.position +
+                            const Duration(seconds: 10);
+                        _videoController!.seekTo(newPosition);
+                      },
+                      tooltip: 'Adelantar 10 segundos',
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.launch,
+                          color: Colors.white, size: 18),
+                      onPressed: _openInYouTube,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close,
+                          color: Colors.white, size: 18),
+                      onPressed: () => setState(() => _isVideoVisible = false),
+                    ),
+                  ],
                 ),
-              ] else
-                _buildInfoRow(
-                    'Colaboradores', 'No hay colaboradores registrados'),
-
-              const SizedBox(height: 12),
-
-              // Sección: Tags
-              _buildInfoSectionTitle('Etiquetas'),
-              if ((_songData['tags'] as List?)?.isNotEmpty ?? false)
-                Wrap(
-                  spacing: 8,
-                  children: (_songData['tags'] as List)
-                      .map((tag) => Chip(
-                            label: Text(tag),
-                            visualDensity: VisualDensity.compact,
-                          ))
-                      .toList(),
-                )
-              else
-                _buildInfoRow('Etiquetas', 'Sin etiquetas asignadas'),
+              ),
             ],
           ),
         ),
-        actions: [
-          Semantics(
-            button: true,
-            label: 'Cerrar diálogo de información',
-            child: TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(
-                'Cerrar',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.primary,
-                  fontWeight: FontWeight.w600,
-                ),
+      ),
+    );
+  }
+
+  Widget _buildVideoContent() {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        width: 200,
+        height: 112,
+        child: YoutubePlayer(
+          controller: _videoController!,
+          showVideoProgressIndicator: true,
+          progressIndicatorColor: Colors.blueAccent,
+          progressColors: const ProgressBarColors(
+            playedColor: Colors.blueAccent,
+            handleColor: Colors.blueAccent,
+          ),
+          onReady: () {
+            _videoController!.updateValue(
+              _videoController!.value.copyWith(
+                isControlsVisible: false,
               ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  void _initializeVideoPlayer(String videoUrl) {
+    final videoId = YoutubePlayer.convertUrlToId(videoUrl);
+    if (videoId != null) {
+      _videoController = YoutubePlayerController(
+        initialVideoId: videoId,
+        flags: const YoutubePlayerFlags(
+          autoPlay: true,
+          mute: false,
+          hideControls: true,
+          disableDragSeek: true,
+          controlsVisibleAtStart: false,
+        ),
+      );
+      setState(() => _isVideoVisible = true);
+    }
+  }
+
+  void _openInYouTube() async {
+    final videoUrl = _songData['videoReference']['url'];
+    if (await canLaunch(videoUrl)) {
+      await launch(videoUrl);
+    } else {
+      SnackBarUtils.showSnackBar(context,
+          message: 'No se pudo abrir YouTube', isError: true);
+    }
+  }
+
+  void _handleChordTap(String chord) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Acorde seleccionado'),
+        content: Text('Acorde: $chord'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorScreen(String message) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Error'),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Text(
+            message,
+            style: const TextStyle(fontSize: 18, color: Colors.red),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$label: ',
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 16),
             ),
           ),
         ],
@@ -2144,36 +2157,140 @@ class _SongDetailsScreenState extends ConsumerState<SongDetailsScreen> {
     );
   }
 
-  Future<String?> _getUserName(String? userId) async {
-    if (userId == null) return null;
-    final doc =
-        await FirebaseFirestore.instance.collection('users').doc(userId).get();
-    return doc.data()?['displayName'] ?? 'Usuario desconocido';
+  Widget _buildLoadingState() {
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.all(20),
+        child: CircularProgressIndicator(),
+      ),
+    );
   }
 
-  String _formattedDate(dynamic timestamp) => timestamp != null
-      ? DateFormat("dd MMM y • HH:mm").format((timestamp as Timestamp).toDate())
-      : 'No registrada';
+  Future<void> _initializeLyrics(String lyrics, String transposedLyrics) async {
+    // Implementa la lógica para inicializar las letras
+  }
 
-  Widget _buildUserChip(String userId) => FutureBuilder<String?>(
-        future: _getUserName(userId),
-        builder: (context, snapshot) => Chip(
-          avatar: const Icon(Icons.person_outline, size: 18),
-          label: Text(snapshot.data ?? 'Usuario desconocido'),
-          visualDensity: VisualDensity.compact,
-        ),
-      );
+  void _showPlaylistSongsSheet(BuildContext context) {
+    if (widget.playlistSongs == null || widget.playlistSongs!.isEmpty) return;
 
-  Widget _buildInfoSectionTitle(String title) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Text(
-          title,
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color: Theme.of(context).colorScheme.primary,
-                fontWeight: FontWeight.w600,
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.7,
+        padding: const EdgeInsets.only(top: 8),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.playlistName ?? 'Canciones de la Playlist',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      if (widget.playlistSongs != null)
+                        Text(
+                          '${widget.playlistSongs!.length} canciones',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                    ],
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
               ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: _buildPlaylistSongsList(),
+            ),
+          ],
         ),
-      );
+      ),
+    );
+  }
+
+  Widget _buildPlaylistSongsList() {
+    return ListView.builder(
+      itemCount: widget.playlistSongs?.length ?? 0,
+      itemBuilder: (context, index) {
+        final songId = widget.playlistSongs![index];
+        final isCurrentSong = songId == widget.songId;
+
+        return FutureBuilder<DocumentSnapshot>(
+          future:
+              FirebaseFirestore.instance.collection('songs').doc(songId).get(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return ListTile(
+                title: const Text('Cargando...'),
+                leading: const CircleAvatar(
+                  child:
+                      Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                ),
+              );
+            }
+
+            final songData = snapshot.data!.data() as Map<String, dynamic>;
+            final title = songData['title'] ?? 'Sin título';
+
+            return ListTile(
+              title: Text(
+                title,
+                style: TextStyle(
+                  fontWeight:
+                      isCurrentSong ? FontWeight.bold : FontWeight.normal,
+                  color: isCurrentSong
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+              leading: CircleAvatar(
+                backgroundColor: isCurrentSong
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.surfaceVariant,
+                foregroundColor: isCurrentSong
+                    ? Theme.of(context).colorScheme.onPrimary
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
+                child: Text('${index + 1}'),
+              ),
+              trailing: isCurrentSong
+                  ? Icon(Icons.play_arrow,
+                      color: Theme.of(context).colorScheme.primary)
+                  : const Icon(Icons.chevron_right),
+              onTap: isCurrentSong
+                  ? () => Navigator.pop(context)
+                  : () => _navigateToSong(songId, index),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _navigateToSong(String songId, int index) {
+    Navigator.pop(context); // Cerrar el bottom sheet
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SongDetailsScreen(
+          songId: songId,
+          groupId: widget.groupId,
+          playlistSongs: widget.playlistSongs,
+          playlistId: widget.playlistId,
+          playlistName: widget.playlistName,
+        ),
+      ),
+    );
+  }
 }
 
 class FullScreenLyricsEditor extends StatefulWidget {
